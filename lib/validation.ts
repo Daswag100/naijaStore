@@ -42,7 +42,7 @@ export const addressSchema = z.object({
   isDefault: z.boolean().default(false),
 });
 
-// Product validation schemas
+// Product validation schemas - Updated to match admin form
 export const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   description: z.string().min(1, 'Description is required'),
@@ -50,8 +50,9 @@ export const productSchema = z.object({
   originalPrice: z.number().positive().optional(),
   images: z.array(z.string().url()).min(1, 'At least one image is required'),
   category: z.string().min(1, 'Category is required'),
-  brand: z.string().min(1, 'Brand is required'),
   stockQuantity: z.number().int().min(0, 'Stock quantity must be non-negative'),
+  // Removed brand requirement since it's not in the admin form
+  // brand: z.string().min(1, 'Brand is required'),
   tags: z.array(z.string()).default([]),
 });
 
