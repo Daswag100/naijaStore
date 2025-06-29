@@ -38,6 +38,7 @@ export default function NewProductPage() {
   });
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [imageUrl, setImageUrl] = useState("");
   
@@ -50,13 +51,34 @@ export default function NewProductPage() {
 
   const fetchCategories = async () => {
     try {
+      setCategoriesLoading(true);
+      console.log('Fetching categories...');
+      
       const response = await fetch('/api/categories');
       const data = await response.json();
+      
+      console.log('Categories response:', data);
+      
       if (response.ok) {
         setCategories(data.categories || []);
+        console.log('Categories loaded:', data.categories?.length || 0);
+      } else {
+        console.error('Failed to fetch categories:', data.error);
+        toast({
+          title: "Warning",
+          description: "Failed to load categories. You can still create the product.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error('Error fetching categories:', error);
+      toast({
+        title: "Warning",
+        description: "Failed to load categories. You can still create the product.",
+        variant: "destructive",
+      });
+    } finally {
+      setCategoriesLoading(false);
     }
   };
 
@@ -69,6 +91,7 @@ export default function NewProductPage() {
   };
 
   const handleSelectChange = (name: string, value: string) => {
+    console.log(`Setting ${name} to:`, value);
     setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: "" }));
@@ -126,6 +149,8 @@ export default function NewProductPage() {
         category: formData.category_id,
         images: formData.images,
       };
+
+      console.log('Submitting product data:', productData);
 
       const response = await fetch('/api/products', {
         method: 'POST',
@@ -352,21 +377,37 @@ export default function NewProductPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="category_id">Category *</Label>
-                  <Select
-                    value={formData.category_id}
-                    onValueChange={(value) => handleSelectChange("category_id", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {categoriesLoading ? (
+                    <div className="flex items-center justify-center p-3 border rounded-md">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                      <span className="ml-2 text-sm text-gray-600">Loading categories...</span>
+                    </div>
+                  ) : categories.length === 0 ? (
+                    <div className="p-3 border rounded-md bg-yellow-50">
+                      <p className="text-sm text-yellow-800">
+                        No categories found. Please create categories first.
+                      </p>
+                    </div>
+                  ) : (
+                    <Select
+                      value={formData.category_id}
+                      onValueChange={(value) => {
+                        console.log('Category selected:', value);
+                        handleSelectChange("category_id", value);
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   {errors.category_id && (
                     <p className="text-sm text-red-600">{errors.category_id}</p>
                   )}
