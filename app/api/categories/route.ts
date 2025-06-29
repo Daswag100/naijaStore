@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { categorySchema } from '@/lib/validation';
-import { categories, generateId } from '@/lib/database';
+import { getCategories, createCategory } from '@/lib/database';
 import { withAdminAuth, handleCors, AuthenticatedRequest } from '@/lib/middleware';
 
 export async function OPTIONS(request: NextRequest) {
@@ -9,11 +8,18 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('🔍 Categories API called...');
+    
+    const categories = await getCategories();
+    
+    console.log('✅ Categories fetched:', categories?.length || 0);
+
     return NextResponse.json({
-      categories,
+      categories: categories || [],
     });
 
   } catch (error) {
+    console.error('❌ Categories API Error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -23,16 +29,18 @@ export async function GET(request: NextRequest) {
 
 export const POST = withAdminAuth(async (request: AuthenticatedRequest) => {
   try {
+    console.log('📝 Creating new category...');
+    
     const body = await request.json();
-    const validatedData = categorySchema.parse(body);
+    
+    const newCategory = await createCategory({
+      name: body.name,
+      slug: body.slug || body.name.toLowerCase().replace(/\s+/g, '-'),
+      description: body.description,
+      image_url: body.image_url,
+    });
 
-    const newCategory = {
-      id: generateId(),
-      ...validatedData,
-      createdAt: new Date(),
-    };
-
-    categories.push(newCategory);
+    console.log('✅ Category created:', newCategory);
 
     return NextResponse.json({
       message: 'Category created successfully',
@@ -40,6 +48,7 @@ export const POST = withAdminAuth(async (request: AuthenticatedRequest) => {
     }, { status: 201 });
 
   } catch (error) {
+    console.error('❌ Category creation error:', error);
     if (error instanceof Error) {
       return NextResponse.json(
         { error: error.message },

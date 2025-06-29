@@ -9,11 +9,10 @@ export type CartItem = Database['public']['Tables']['cart_items']['Row'];
 export type Order = Database['public']['Tables']['orders']['Row'];
 export type OrderItem = Database['public']['Tables']['order_items']['Row'];
 export type UserAddress = Database['public']['Tables']['user_addresses']['Row'];
-// Add these missing exports
+
+// Add these missing exports for backward compatibility
 export const products = [];
 export const generateId = () => Math.random().toString(36).substring(2);
-
-// Your existing database code...
 
 export interface ProductWithCategory extends Product {
   category?: Category;
@@ -80,12 +79,19 @@ export async function updateUser(id: string, updates: Partial<User>) {
 
 // Category functions
 export async function getCategories() {
+  console.log('🔍 Fetching categories from database...');
+  
   const { data, error } = await supabase
     .from('categories')
     .select('*')
     .order('name');
 
-  if (error) throw error;
+  if (error) {
+    console.error('❌ Database error fetching categories:', error);
+    throw error;
+  }
+  
+  console.log('✅ Categories fetched from DB:', data?.length || 0);
   return data;
 }
 
@@ -134,7 +140,7 @@ export async function getProducts(options: {
     .select(`
       *,
       category:categories(*)
-    `)
+    `, { count: 'exact' })
     .eq('status', 'active');
 
   // Apply filters
