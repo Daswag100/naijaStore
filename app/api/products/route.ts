@@ -19,7 +19,6 @@ export async function GET(request: NextRequest) {
     
     console.log('📊 Query params:', { page, limit, category, search });
 
-    // Use Supabase function
     const result = await getProducts({
       page,
       limit,

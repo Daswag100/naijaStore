@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addToCartSchema, updateCartSchema } from '@/lib/validation';
-import { cartItems, products, generateId } from '@/lib/database';
+import { getCartItems, addToCart, getProductById } from '@/lib/database';
 import { withAuth, handleCors, AuthenticatedRequest } from '@/lib/middleware';
 
 export async function OPTIONS(request: NextRequest) {
@@ -9,30 +8,43 @@ export async function OPTIONS(request: NextRequest) {
 
 export const GET = withAuth(async (request: AuthenticatedRequest) => {
   try {
-    const userCartItems = cartItems.filter(item => item.userId === request.user!.userId);
+    console.log('🛒 Loading cart for user:', request.user!.userId);
     
-    // Populate with product details
-    const populatedItems = userCartItems.map(item => {
-      const product = products.find(p => p.id === item.productId);
-      return {
-        ...item,
-        product,
-      };
-    }).filter(item => item.product); // Remove items with deleted products
+    const cartItems = await getCartItems(request.user!.userId);
+    
+    // Map to CartItem structure expected by frontend
+    const mappedItems = cartItems.map(item => ({
+      id: item.id,
+      name: item.product?.name || 'Unknown Product',
+      price: item.product?.price || 0,
+      image: item.product?.images?.[0] || '/placeholder-image.jpg',
+      quantity: item.quantity,
+      size: item.size || undefined,
+      color: item.color || undefined,
+      product_id: item.product_id,
+    }));
 
-    const total = populatedItems.reduce((sum, item) => 
-      sum + (item.product!.price * item.quantity), 0
+    const total = mappedItems.reduce((sum, item) => 
+      sum + (item.price * item.quantity), 0
     );
 
+    const itemCount = mappedItems.reduce((sum, item) => 
+      sum + item.quantity, 0
+    );
+
+    console.log('✅ Cart loaded successfully:', mappedItems.length, 'items');
+
     return NextResponse.json({
-      items: populatedItems,
+      items: mappedItems,
       total,
-      itemCount: populatedItems.reduce((sum, item) => sum + item.quantity, 0),
+      itemCount,
+      isGuest: request.user!.isGuest || false,
     });
 
   } catch (error) {
+    console.error('❌ Error loading cart:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to load cart items' },
       { status: 500 }
     );
   }
@@ -41,10 +53,19 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
 export const POST = withAuth(async (request: AuthenticatedRequest) => {
   try {
     const body = await request.json();
-    const validatedData = addToCartSchema.parse(body);
+    
+    console.log('➕ Adding item to cart:', body);
+    
+    // Validate required fields
+    if (!body.product_id || !body.quantity) {
+      return NextResponse.json(
+        { error: 'Product ID and quantity are required' },
+        { status: 400 }
+      );
+    }
 
     // Check if product exists
-    const product = products.find(p => p.id === validatedData.productId);
+    const product = await getProductById(body.product_id);
     if (!product) {
       return NextResponse.json(
         { error: 'Product not found' },
@@ -52,48 +73,31 @@ export const POST = withAuth(async (request: AuthenticatedRequest) => {
       );
     }
 
-    if (!product.inStock || product.stockQuantity < validatedData.quantity) {
+    if (product.inventory_quantity < body.quantity) {
       return NextResponse.json(
         { error: 'Insufficient stock' },
         { status: 400 }
       );
     }
 
-    // Check if item already exists in cart
-    const existingItemIndex = cartItems.findIndex(item =>
-      item.userId === request.user!.userId &&
-      item.productId === validatedData.productId &&
-      item.size === validatedData.size &&
-      item.color === validatedData.color
-    );
+    await addToCart({
+      user_id: request.user!.userId,
+      product_id: body.product_id,
+      quantity: body.quantity,
+      size: body.size,
+      color: body.color,
+    });
 
-    if (existingItemIndex !== -1) {
-      // Update quantity
-      cartItems[existingItemIndex].quantity += validatedData.quantity;
-    } else {
-      // Add new item
-      const newItem = {
-        id: generateId(),
-        userId: request.user!.userId,
-        ...validatedData,
-        createdAt: new Date(),
-      };
-      cartItems.push(newItem);
-    }
+    console.log('✅ Item added to cart successfully');
 
     return NextResponse.json({
       message: 'Item added to cart successfully',
     });
 
   } catch (error) {
-    if (error instanceof Error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
-      );
-    }
+    console.error('❌ Error adding to cart:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to add item to cart' },
       { status: 500 }
     );
   }

@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCategories, createCategory } from '@/lib/database';
-import { withAdminAuth, handleCors, AuthenticatedRequest } from '@/lib/middleware';
-
-export async function OPTIONS(request: NextRequest) {
-  return handleCors(request);
-}
+import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   try {
     console.log('🔍 Categories API called...');
     
-    const categories = await getCategories();
-    
-    console.log('✅ Categories fetched:', categories?.length || 0);
+    const { data: categories, error } = await supabase
+      .from('categories')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ Database error:', error);
+      throw error;
+    }
+
+    console.log('✅ Categories fetched from DB:', categories?.length || 0);
 
     return NextResponse.json({
       categories: categories || [],
@@ -27,18 +30,27 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export const POST = withAdminAuth(async (request: AuthenticatedRequest) => {
+export async function POST(request: NextRequest) {
   try {
     console.log('📝 Creating new category...');
     
     const body = await request.json();
     
-    const newCategory = await createCategory({
-      name: body.name,
-      slug: body.slug || body.name.toLowerCase().replace(/\s+/g, '-'),
-      description: body.description,
-      image_url: body.image_url,
-    });
+    const { data: newCategory, error } = await supabase
+      .from('categories')
+      .insert([{
+        name: body.name,
+        slug: body.slug || body.name.toLowerCase().replace(/\s+/g, '-'),
+        description: body.description,
+        image_url: body.image_url,
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Database error:', error);
+      throw error;
+    }
 
     console.log('✅ Category created:', newCategory);
 
@@ -49,15 +61,9 @@ export const POST = withAdminAuth(async (request: AuthenticatedRequest) => {
 
   } catch (error) {
     console.error('❌ Category creation error:', error);
-    if (error instanceof Error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
-      );
-    }
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
   }
-});
+}

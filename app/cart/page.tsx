@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/contexts/cart-context";
 import { formatNaira } from "@/lib/utils";
+import { FlutterwaveCheckout } from "@/components/flutterwave-checkout"; // Import the new component
 
 export default function CartPage() {
   const { state, updateQuantity, removeItem } = useCart();
@@ -188,12 +189,11 @@ export default function CartPage() {
               </div>
 
               <div className="space-y-3">
-                <Link href="/checkout">
-                  <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
-                    Proceed to Checkout
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
+                {/* Replace the checkout button with Flutterwave */}
+                <FlutterwaveCheckout
+                  discount={discount}
+                  shippingCost={shippingCost}
+                />
                 
                 <Link href="/products">
                   <Button variant="outline" className="w-full">

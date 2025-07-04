@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { getUserAddresses, type UserAddress } from '@/lib/database';
+import { SessionManager } from '@/lib/session-manager'; // Import SessionManager
 
 export interface User {
   id: string;
@@ -30,6 +31,7 @@ const AuthContext = createContext<{
   addAddress: (address: Omit<UserAddress, 'id' | 'user_id' | 'created_at'>) => void;
   updateAddress: (id: string, address: Partial<UserAddress>) => void;
   deleteAddress: (id: string) => void;
+  refreshUser: () => Promise<void>;
 } | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -39,73 +41,186 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: false,
   });
 
+  // Get SessionManager instance
+  const [sessionManager, setSessionManager] = useState<SessionManager | null>(null);
+
   useEffect(() => {
+    // Initialize SessionManager on client side
+    if (typeof window !== 'undefined') {
+      setSessionManager(SessionManager.getInstance());
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        loadUserProfile(session.user);
-      } else {
-        setState({
-          user: null,
-          isLoading: false,
-          isAuthenticated: false,
-        });
+    const initializeAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          if (mounted) {
+            setState({
+              user: null,
+              isLoading: false,
+              isAuthenticated: false,
+            });
+          }
+          return;
+        }
+
+        if (session?.user && mounted) {
+          await loadUserProfile(session.user);
+        } else if (mounted) {
+          setState({
+            user: null,
+            isLoading: false,
+            isAuthenticated: false,
+          });
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+        if (mounted) {
+          setState({
+            user: null,
+            isLoading: false,
+            isAuthenticated: false,
+          });
+        }
       }
-    });
+    };
+
+    initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        await loadUserProfile(session.user);
-      } else {
+      console.log('Auth state changed:', event, session?.user?.email);
+      
+      if (!mounted) return;
+
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        // FIXED: Clear SessionManager on logout
+        if (sessionManager) {
+          sessionManager.clearSession();
+        }
         setState({
           user: null,
           isLoading: false,
           isAuthenticated: false,
         });
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session?.user) {
+          await loadUserProfile(session.user);
+        }
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [sessionManager]);
 
   const loadUserProfile = async (supabaseUser: SupabaseUser) => {
+    console.log('Loading user profile for:', supabaseUser.email);
+    
     try {
-      // Get user profile from our users table
-      const { data: profile, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', supabaseUser.id)
-        .single();
-
-      if (error) {
-        console.error('Error loading user profile:', error);
-        setState({
-          user: null,
-          isLoading: false,
-          isAuthenticated: false,
-        });
-        return;
-      }
-
-      // Get user addresses
-      const addresses = await getUserAddresses(supabaseUser.id);
-
-      const user: User = {
-        id: profile.id,
-        email: profile.email,
-        name: profile.name,
-        phone: profile.phone,
-        addresses: addresses || [],
+      // Create basic user first from Supabase auth data
+      const basicUser: User = {
+        id: supabaseUser.id,
+        email: supabaseUser.email || '',
+        name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'User',
+        phone: supabaseUser.user_metadata?.phone || '',
+        addresses: [],
       };
 
+      // FIXED: Upgrade SessionManager to real user
+      if (sessionManager) {
+        console.log('🔄 Upgrading SessionManager to real user:', supabaseUser.id);
+        sessionManager.upgradeToRealUser(supabaseUser.id);
+      }
+
+      // Set user immediately with basic data to prevent logout
       setState({
-        user,
+        user: basicUser,
         isLoading: false,
         isAuthenticated: true,
       });
+
+      // Try to get enhanced profile data, but don't fail if it doesn't work
+      try {
+        // First, ensure user exists in our users table
+        const { data: existingProfile, error: selectError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', supabaseUser.id)
+          .single();
+
+        let profile = existingProfile;
+
+        // If user doesn't exist in our table, create them
+        if (selectError && selectError.code === 'PGRST116') {
+          console.log('Creating user profile in database...');
+          const { data: newProfile, error: insertError } = await supabase
+            .from('users')
+            .insert([{
+              id: supabaseUser.id,
+              email: supabaseUser.email || '',
+              name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'User',
+              phone: supabaseUser.user_metadata?.phone || null,
+              email_verified: true,
+              is_guest: false, // FIXED: Ensure this is set to false for real users
+            }])
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error('Error creating user profile:', insertError);
+            // Don't fail - use basic user data
+          } else {
+            profile = newProfile;
+          }
+        } else if (selectError) {
+          console.error('Error fetching user profile:', selectError);
+          // Don't fail - use basic user data
+        }
+
+        // Get user addresses (optional enhancement)
+        let addresses: UserAddress[] = [];
+        try {
+          addresses = await getUserAddresses(supabaseUser.id) || [];
+        } catch (error) {
+          console.error('Error loading addresses:', error);
+          // Don't fail - just use empty addresses
+        }
+
+        // Update user with enhanced data if available
+        const enhancedUser: User = {
+          id: supabaseUser.id,
+          email: profile?.email || supabaseUser.email || '',
+          name: profile?.name || supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'User',
+          phone: profile?.phone || supabaseUser.user_metadata?.phone || '',
+          addresses,
+        };
+
+        setState({
+          user: enhancedUser,
+          isLoading: false,
+          isAuthenticated: true,
+        });
+
+        console.log('✅ User profile loaded successfully');
+
+      } catch (enhancementError) {
+        console.error('Error enhancing user profile:', enhancementError);
+        // Keep the basic user - don't logout due to enhancement failures
+      }
+
     } catch (error) {
-      console.error('Error loading user profile:', error);
+      console.error('Critical error loading user profile:', error);
+      // Only logout if there's a critical error with basic auth
       setState({
         user: null,
         isLoading: false,
@@ -114,8 +229,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshUser = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await loadUserProfile(session.user);
+    }
+  };
+
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      setState(prev => ({ ...prev, isLoading: true }));
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -123,18 +247,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Login error:', error);
+        setState(prev => ({ ...prev, isLoading: false }));
         return false;
       }
 
+      console.log('✅ Login successful for:', email);
+      // Don't set loading to false here - let the auth state change handler do it
       return true;
     } catch (error) {
       console.error('Login error:', error);
+      setState(prev => ({ ...prev, isLoading: false }));
       return false;
     }
   };
 
   const register = async (data: { email: string; password: string; name: string; phone?: string }): Promise<boolean> => {
     try {
+      setState(prev => ({ ...prev, isLoading: true }));
+
       // Sign up with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -149,53 +279,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (authError) {
         console.error('Registration error:', authError);
+        setState(prev => ({ ...prev, isLoading: false }));
         return false;
       }
 
       if (authData.user && !authData.session) {
         // User created but needs email confirmation
+        setState(prev => ({ ...prev, isLoading: false }));
         alert('Please check your email to confirm your account before logging in.');
         return true;
       }
 
-      if (authData.user && authData.session) {
-        // User created and logged in successfully
-        // Create user profile in our users table
-        const { error: profileError } = await supabase
-          .from('users')
-          .upsert([{
-            id: authData.user.id,
-            email: data.email,
-            name: data.name,
-            phone: data.phone || null,
-            password_hash: '', // Not needed since we use Supabase Auth
-            email_verified: true,
-          }], {
-            onConflict: 'id',
-            ignoreDuplicates: false
-          });
-
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
-          // Don't return false here - auth worked, profile creation failed
-        }
-      }
-
+      console.log('✅ Registration successful for:', data.email);
+      // Don't set loading to false here - let the auth state change handler do it
       return true;
     } catch (error) {
       console.error('Registration error:', error);
+      setState(prev => ({ ...prev, isLoading: false }));
       return false;
     }
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    try {
+      setState(prev => ({ ...prev, isLoading: true }));
+      
+      // FIXED: Clear SessionManager first
+      if (sessionManager) {
+        console.log('🔄 Clearing SessionManager on logout');
+        sessionManager.clearSession();
+      }
+      
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('Logout error:', error);
+      }
+      
+      console.log('✅ Logout successful');
+      // The auth state change handler will update the state
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Force logout even if there's an error
+      if (sessionManager) {
+        sessionManager.clearSession();
+      }
+      setState({
+        user: null,
+        isLoading: false,
+        isAuthenticated: false,
+      });
+    }
   };
 
   const updateProfile = async (data: Partial<User>) => {
     if (!state.user) return;
 
     try {
+      // Update in Supabase auth metadata
+      const { error: authError } = await supabase.auth.updateUser({
+        data: {
+          name: data.name,
+          phone: data.phone,
+        }
+      });
+
+      if (authError) {
+        console.error('Auth profile update error:', authError);
+      }
+
+      // Update in our users table
       const { error } = await supabase
         .from('users')
         .update({
@@ -213,6 +366,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         user: prev.user ? { ...prev.user, ...data } : null,
       }));
+
+      console.log('✅ Profile updated successfully');
     } catch (error) {
       console.error('Profile update error:', error);
     }
@@ -243,6 +398,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           addresses: [...prev.user.addresses, newAddress],
         } : null,
       }));
+
+      console.log('✅ Address added successfully');
     } catch (error) {
       console.error('Address creation error:', error);
     }
@@ -271,6 +428,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ),
         } : null,
       }));
+
+      console.log('✅ Address updated successfully');
     } catch (error) {
       console.error('Address update error:', error);
     }
@@ -297,6 +456,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           addresses: prev.user.addresses.filter(addr => addr.id !== id),
         } : null,
       }));
+
+      console.log('✅ Address deleted successfully');
     } catch (error) {
       console.error('Address deletion error:', error);
     }
@@ -312,6 +473,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       addAddress,
       updateAddress,
       deleteAddress,
+      refreshUser,
     }}>
       {children}
     </AuthContext.Provider>
@@ -324,4 +486,30 @@ export function useAuth() {
     throw new Error('useAuth must be used within AuthProvider');
   }
   return context;
+}
+
+// Auth guard component for protecting pages
+export function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold mb-2">Please sign in</h2>
+          <p className="text-gray-600">You need to be logged in to view this page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
 }

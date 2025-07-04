@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import ImageUpload from "@/components/ui/ImageUpload";
 
 interface Category {
   id: string;
@@ -52,7 +53,6 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [imageUrl, setImageUrl] = useState("");
   
   const router = useRouter();
   const { toast } = useToast();
@@ -121,23 +121,6 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: "" }));
     }
-  };
-
-  const addImage = () => {
-    if (imageUrl && !formData.images.includes(imageUrl)) {
-      setFormData(prev => ({
-        ...prev,
-        images: [...prev.images, imageUrl]
-      }));
-      setImageUrl("");
-    }
-  };
-
-  const removeImage = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      images: prev.images.filter((_, i) => i !== index)
-    }));
   };
 
   const validateForm = () => {
@@ -218,7 +201,6 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center space-x-4">
         <Button
           variant="ghost"
@@ -236,9 +218,7 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Basic Information */}
             <Card>
               <CardHeader>
                 <CardTitle>Basic Information</CardTitle>
@@ -278,7 +258,6 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
               </CardContent>
             </Card>
 
-            {/* Pricing */}
             <Card>
               <CardHeader>
                 <CardTitle>Pricing</CardTitle>
@@ -322,7 +301,6 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
               </CardContent>
             </Card>
 
-            {/* Images */}
             <Card>
               <CardHeader>
                 <CardTitle>Product Images</CardTitle>
@@ -330,54 +308,21 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
                   Update images to showcase your product
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex space-x-2">
-                  <Input
-                    placeholder="Enter image URL"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                  />
-                  <Button type="button" onClick={addImage} variant="outline">
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
-
+              <CardContent>
+                <ImageUpload
+                  images={formData.images}
+                  onImagesChange={(newImages) => setFormData(prev => ({ ...prev, images: newImages }))}
+                  maxImages={5}
+                  showHelper={true}
+                />
                 {errors.images && (
-                  <p className="text-sm text-red-600">{errors.images}</p>
-                )}
-
-                {formData.images.length > 0 && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {formData.images.map((image, index) => (
-                      <div key={index} className="relative group">
-                        <div className="aspect-square relative rounded-lg overflow-hidden bg-gray-100">
-                          <Image
-                            src={image}
-                            alt={`Product image ${index + 1}`}
-                            fill
-                            className="object-cover"
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="sm"
-                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => removeImage(index)}
-                        >
-                          <X className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-sm text-red-600 mt-2">{errors.images}</p>
                 )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Sidebar */}
           <div className="space-y-6">
-            {/* Status & Visibility */}
             <Card>
               <CardHeader>
                 <CardTitle>Status & Visibility</CardTitle>
@@ -402,7 +347,6 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
               </CardContent>
             </Card>
 
-            {/* Organization */}
             <Card>
               <CardHeader>
                 <CardTitle>Organization</CardTitle>
@@ -446,7 +390,6 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
               </CardContent>
             </Card>
 
-            {/* Inventory */}
             <Card>
               <CardHeader>
                 <CardTitle>Inventory</CardTitle>
@@ -470,7 +413,6 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
               </CardContent>
             </Card>
 
-            {/* Actions */}
             <div className="space-y-3">
               <Button
                 type="submit"

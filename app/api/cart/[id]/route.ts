@@ -1,6 +1,6 @@
+// app/api/cart/[id]/route.ts - Fixed with proper types
 import { NextRequest, NextResponse } from 'next/server';
-import { updateCartSchema } from '@/lib/validation';
-import { cartItems } from '@/lib/database';
+import { updateCartItem, removeCartItem } from '@/lib/database';
 import { withAuth, handleCors, AuthenticatedRequest } from '@/lib/middleware';
 
 export async function OPTIONS(request: NextRequest) {
@@ -10,25 +10,25 @@ export async function OPTIONS(request: NextRequest) {
 export const PUT = withAuth(async (request: AuthenticatedRequest, { params }: { params: { id: string } }) => {
   try {
     const body = await request.json();
-    const validatedData = updateCartSchema.parse(body);
+    const { quantity } = body;
 
-    const itemIndex = cartItems.findIndex(
-      item => item.id === params.id && item.userId === request.user!.userId
-    );
-
-    if (itemIndex === -1) {
+    if (!quantity || quantity < 0) {
       return NextResponse.json(
-        { error: 'Cart item not found' },
-        { status: 404 }
+        { error: 'Valid quantity is required' },
+        { status: 400 }
       );
     }
 
-    if (validatedData.quantity === 0) {
-      // Remove item
-      cartItems.splice(itemIndex, 1);
+    console.log('📝 Updating cart item:', params.id, 'quantity:', quantity);
+
+    if (quantity === 0) {
+      // Remove item if quantity is 0
+      await removeCartItem(params.id);
+      console.log('🗑️ Cart item removed');
     } else {
       // Update quantity
-      cartItems[itemIndex].quantity = validatedData.quantity;
+      await updateCartItem(params.id, quantity);
+      console.log('✅ Cart item quantity updated');
     }
 
     return NextResponse.json({
@@ -36,14 +36,9 @@ export const PUT = withAuth(async (request: AuthenticatedRequest, { params }: { 
     });
 
   } catch (error) {
-    if (error instanceof Error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
-      );
-    }
+    console.error('❌ Error updating cart item:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to update cart item' },
       { status: 500 }
     );
   }
@@ -51,26 +46,19 @@ export const PUT = withAuth(async (request: AuthenticatedRequest, { params }: { 
 
 export const DELETE = withAuth(async (request: AuthenticatedRequest, { params }: { params: { id: string } }) => {
   try {
-    const itemIndex = cartItems.findIndex(
-      item => item.id === params.id && item.userId === request.user!.userId
-    );
+    console.log('🗑️ Removing cart item:', params.id);
+    
+    await removeCartItem(params.id);
 
-    if (itemIndex === -1) {
-      return NextResponse.json(
-        { error: 'Cart item not found' },
-        { status: 404 }
-      );
-    }
-
-    cartItems.splice(itemIndex, 1);
-
+    console.log('✅ Cart item removed successfully');
     return NextResponse.json({
       message: 'Item removed from cart successfully',
     });
 
   } catch (error) {
+    console.error('❌ Error removing cart item:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to remove cart item' },
       { status: 500 }
     );
   }

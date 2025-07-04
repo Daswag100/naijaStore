@@ -15,7 +15,7 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   }
 });
 
-// Database types
+// Database types with guest support and cart enhancements
 export interface Database {
   public: {
     Tables: {
@@ -23,30 +23,36 @@ export interface Database {
         Row: {
           id: string;
           email: string;
-          password_hash: string;
+          password_hash: string | null;
           name: string;
           phone: string | null;
           email_verified: boolean;
+          is_guest: boolean;
+          guest_session_id: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           email: string;
-          password_hash: string;
+          password_hash?: string | null;
           name: string;
           phone?: string | null;
           email_verified?: boolean;
+          is_guest?: boolean;
+          guest_session_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
           email?: string;
-          password_hash?: string;
+          password_hash?: string | null;
           name?: string;
           phone?: string | null;
           email_verified?: boolean;
+          is_guest?: boolean;
+          guest_session_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -130,6 +136,8 @@ export interface Database {
           user_id: string;
           product_id: string;
           quantity: number;
+          size: string | null;
+          color: string | null;
           created_at: string;
         };
         Insert: {
@@ -137,6 +145,8 @@ export interface Database {
           user_id: string;
           product_id: string;
           quantity: number;
+          size?: string | null;
+          color?: string | null;
           created_at?: string;
         };
         Update: {
@@ -144,6 +154,8 @@ export interface Database {
           user_id?: string;
           product_id?: string;
           quantity?: number;
+          size?: string | null;
+          color?: string | null;
           created_at?: string;
         };
       };
@@ -157,6 +169,9 @@ export interface Database {
           shipping_cost: number;
           shipping_address: any;
           billing_address: any;
+          payment_reference: string | null;
+          payment_status: 'pending' | 'paid' | 'failed' | 'cancelled';
+          is_guest_order: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -169,6 +184,9 @@ export interface Database {
           shipping_cost: number;
           shipping_address: any;
           billing_address: any;
+          payment_reference?: string | null;
+          payment_status?: 'pending' | 'paid' | 'failed' | 'cancelled';
+          is_guest_order?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -181,6 +199,9 @@ export interface Database {
           shipping_cost?: number;
           shipping_address?: any;
           billing_address?: any;
+          payment_reference?: string | null;
+          payment_status?: 'pending' | 'paid' | 'failed' | 'cancelled';
+          is_guest_order?: boolean;
           created_at?: string;
           updated_at?: string;
         };

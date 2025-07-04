@@ -74,7 +74,7 @@ const mockOrders = [
 export default function AccountPage() {
   const { user, updateProfile, logout } = useAuth();
   const { toast } = useToast();
-  const [sessionManager, setSessionManager] = useState<SessionManager | null>(null); // Add SessionManager state
+  const sessionManager = SessionManager.getInstance(); // Initialize session manager
   
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({
@@ -82,20 +82,6 @@ export default function AccountPage() {
     email: user?.email || "",
     phone: user?.phone || "",
   });
-
-  // Profile management state (NEW)
-  const [profileData, setProfileData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-  });
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
-
-  // Initialize session manager on client side only
-  useEffect(() => {
-    setSessionManager(SessionManager.getInstance());
-  }, []);
 
   // Address management state
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -117,89 +103,30 @@ export default function AccountPage() {
 
   // Load addresses on component mount
   useEffect(() => {
-    if (user && sessionManager) {
-      loadAddresses();
-    }
-  }, [user, sessionManager]);
-
-  // Load profile on component mount (NEW)
-  useEffect(() => {
-    if (user && sessionManager) {
-      loadProfile();
-    }
-  }, [user, sessionManager]);
-
-  // New loadProfile function
-  const loadProfile = async () => {
-    if (!sessionManager) return;
-    
-    try {
-      setIsLoadingProfile(true);
-      console.log('🔍 Loading profile with session manager');
-      
-      const response = await fetch('/api/profile', {
-        method: 'GET',
-        headers: sessionManager.getApiHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Profile loaded:', data.user);
-        
-        const profileInfo = {
-          name: data.user.name || '',
-          email: data.user.email || '',
-          phone: data.user.phone || '',
-        };
-
-        setProfileData(profileInfo);
-        setFormData(profileInfo); // Update form data too
-      } else {
-        // If profile doesn't exist, use user context data
-        const fallbackData = {
-          name: user?.name || '',
-          email: user?.email || '',
-          phone: user?.phone || '',
-        };
-        setProfileData(fallbackData);
-        setFormData(fallbackData);
-      }
-      
-    } catch (error) {
-      console.error('❌ Error loading profile:', error);
-      // Use fallback data on error
-      const fallbackData = {
-        name: user?.name || '',
-        email: user?.email || '',
-        phone: user?.phone || '',
-      };
-      setProfileData(fallbackData);
-      setFormData(fallbackData);
-    } finally {
-      setIsLoadingProfile(false);
-    }
-  };
+    loadAddresses();
+  }, []);
 
   const loadAddresses = async () => {
-    if (!sessionManager) return;
-    
     try {
       setIsLoadingAddresses(true);
-      console.log('🔍 Loading addresses with session manager');
+      console.log('🔍 Loading addresses with session:', sessionManager.getSessionId());
       
       const response = await fetch('/api/addresses', {
         method: 'GET',
-        headers: sessionManager.getApiHeaders(), // Use SessionManager headers
+        headers: sessionManager.getApiHeaders(), // Use session manager headers
       });
+
+      console.log('📡 Address fetch response status:', response.status);
 
       if (!response.ok) {
         throw new Error('Failed to load addresses');
       }
 
       const data = await response.json();
+      console.log('✅ Addresses loaded:', data.addresses?.length || 0);
       setAddresses(data.addresses || []);
     } catch (error) {
-      console.error('Error loading addresses:', error);
+      console.error('❌ Error loading addresses:', error);
       toast({
         title: "Error",
         description: "Failed to load addresses",
@@ -213,19 +140,28 @@ export default function AccountPage() {
   const handleAddressSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!sessionManager) return;
-    
+    // Validate required fields
+    if (!addressForm.street || !addressForm.city || !addressForm.state) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmittingAddress(true);
 
     try {
-      console.log('📝 Submitting address:', addressForm);
-      
+      console.log('📝 Submitting address with session:', sessionManager.getSessionId());
+      console.log('📝 Address form data:', addressForm);
+
       const url = editingAddress ? `/api/addresses/${editingAddress.id}` : '/api/addresses';
       const method = editingAddress ? 'PUT' : 'POST';
 
       const response = await fetch(url, {
         method,
-        headers: sessionManager.getApiHeaders(), // Use SessionManager headers
+        headers: sessionManager.getApiHeaders(), // Use session manager headers
         body: JSON.stringify({
           name: addressForm.name || `${addressForm.city} Address`,
           street: addressForm.street,
@@ -237,10 +173,16 @@ export default function AccountPage() {
         }),
       });
 
+      console.log('📡 Address submit response status:', response.status);
+
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('❌ Address submit failed:', errorData);
         throw new Error(errorData.error || 'Failed to save address');
       }
+
+      const result = await response.json();
+      console.log('✅ Address saved successfully:', result);
 
       toast({
         title: "Success",
@@ -251,7 +193,7 @@ export default function AccountPage() {
       await loadAddresses();
       handleCloseAddressDialog();
     } catch (error) {
-      console.error('Error saving address:', error);
+      console.error('❌ Error saving address:', error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save address",
@@ -263,16 +205,16 @@ export default function AccountPage() {
   };
 
   const handleDeleteAddress = async (addressId: string) => {
-    if (!sessionManager) return;
-    
     if (!confirm('Are you sure you want to delete this address?')) {
       return;
     }
 
     try {
+      console.log('🗑️ Deleting address:', addressId);
+      
       const response = await fetch(`/api/addresses/${addressId}`, {
         method: 'DELETE',
-        headers: sessionManager.getApiHeaders(), // Use SessionManager headers
+        headers: sessionManager.getApiHeaders(), // Use session manager headers
       });
 
       if (!response.ok) {
@@ -286,7 +228,7 @@ export default function AccountPage() {
 
       await loadAddresses();
     } catch (error) {
-      console.error('Error deleting address:', error);
+      console.error('❌ Error deleting address:', error);
       toast({
         title: "Error",
         description: "Failed to delete address",
@@ -323,66 +265,9 @@ export default function AccountPage() {
     });
   };
 
-  // Updated handleSave function for profile
-  const handleSave = async () => {
-    if (!sessionManager) return;
-    
-    if (!formData.name.trim()) {
-      toast({
-        title: "Error",
-        description: "Name is required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSavingProfile(true);
-
-    try {
-      console.log('💾 Saving profile:', formData);
-      
-      const response = await fetch('/api/profile', {
-        method: 'PUT',
-        headers: sessionManager.getApiHeaders(),
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save profile');
-      }
-
-      const result = await response.json();
-      console.log('✅ Profile saved:', result.user);
-
-      // Show success alert
-      alert('Profile saved successfully!');
-      
-      toast({
-        title: "Success",
-        description: "Profile updated successfully",
-      });
-
-      // Update local state
-      setProfileData(formData);
-      setEditMode(false);
-
-      // Update auth context if available
-      if (updateProfile) {
-        updateProfile(formData);
-      }
-
-    } catch (error) {
-      console.error('❌ Error saving profile:', error);
-      alert('Failed to save profile. Please try again.');
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save profile",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSavingProfile(false);
-    }
+  const handleSave = () => {
+    updateProfile(formData);
+    setEditMode(false);
   };
 
   const getStatusColor = (status: string) => {
@@ -398,20 +283,12 @@ export default function AccountPage() {
     }
   };
 
-  if (!user) {
-    return (
-      <div className="container mx-auto px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold mb-4">Please sign in to view your account</h1>
-        <Button>Sign In</Button>
-      </div>
-    );
-  }
-
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">My Account</h1>
-        <p className="text-gray-600">Manage your Profile</p>
+        <p className="text-gray-600">Manage your account settings and view your orders</p>
+        <p className="text-xs text-gray-400 mt-1">Session: {sessionManager.getSessionId()}</p>
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
@@ -434,80 +311,53 @@ export default function AccountPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {isLoadingProfile ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-600">Loading profile...</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    disabled={!editMode}
+                  />
                 </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Full Name *</Label>
-                      <Input
-                        id="name"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        disabled={!editMode}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email Address *</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        disabled={!editMode}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Phone Number</Label>
-                      <Input
-                        id="phone"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        disabled={!editMode}
-                        placeholder="+234 800 000 0000"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex space-x-4">
-                    {editMode ? (
-                      <>
-                        <Button 
-                          onClick={handleSave} 
-                          disabled={isSavingProfile}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          {isSavingProfile ? 'Saving...' : 'Save Changes'}
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          onClick={() => {
-                            setEditMode(false);
-                            setFormData(profileData); // Reset to saved data
-                          }}
-                          disabled={isSavingProfile}
-                        >
-                          Cancel
-                        </Button>
-                      </>
-                    ) : (
-                      <Button 
-                        onClick={() => {
-                          setEditMode(true);
-                          alert('You can now edit your profile information');
-                        }}
-                      >
-                        Edit Profile
-                      </Button>
-                    )}
-                  </div>
-                </>
-              )}
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    disabled={!editMode}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    disabled={!editMode}
+                  />
+                </div>
+              </div>
+              
+              <div className="flex space-x-4">
+                {editMode ? (
+                  <>
+                    <Button onClick={handleSave} className="bg-green-600 hover:bg-green-700">
+                      Save Changes
+                    </Button>
+                    <Button variant="outline" onClick={() => setEditMode(false)}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={() => setEditMode(true)}>
+                    Edit Profile
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -632,7 +482,7 @@ export default function AccountPage() {
                       </DialogHeader>
                       <form onSubmit={handleAddressSubmit} className="space-y-4">
                         <div className="space-y-2">
-                          <Label htmlFor="street">Street Address</Label>
+                          <Label htmlFor="street">Street Address *</Label>
                           <Input
                             id="street"
                             value={addressForm.street}
@@ -644,7 +494,7 @@ export default function AccountPage() {
                         
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label htmlFor="city">City</Label>
+                            <Label htmlFor="city">City *</Label>
                             <Input
                               id="city"
                               value={addressForm.city}
@@ -654,10 +504,11 @@ export default function AccountPage() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor="state">State</Label>
+                            <Label htmlFor="state">State *</Label>
                             <Select 
                               value={addressForm.state} 
                               onValueChange={(value) => setAddressForm({ ...addressForm, state: value })}
+                              required
                             >
                               <SelectTrigger>
                                 <SelectValue placeholder="Select state" />

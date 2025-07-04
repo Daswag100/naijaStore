@@ -1,8 +1,12 @@
 import { supabase, supabaseAdmin } from './supabase';
 import type { Database } from './supabase';
 
-// Type definitions
-export type User = Database['public']['Tables']['users']['Row'];
+// Enhanced Type definitions with guest support
+export type User = Database['public']['Tables']['users']['Row'] & {
+  is_guest?: boolean;
+  guest_session_id?: string;
+};
+
 export type Category = Database['public']['Tables']['categories']['Row'];
 export type Product = Database['public']['Tables']['products']['Row'];
 export type CartItem = Database['public']['Tables']['cart_items']['Row'];
@@ -26,16 +30,22 @@ export interface OrderWithItems extends Order {
   order_items?: OrderItem[];
 }
 
-// User functions
+// Enhanced User functions with guest support
 export async function createUser(userData: {
   email: string;
   password_hash: string;
   name: string;
   phone?: string;
+  is_guest?: boolean;
+  guest_session_id?: string;
 }) {
   const { data, error } = await supabaseAdmin
     .from('users')
-    .insert([userData])
+    .insert([{
+      ...userData,
+      is_guest: userData.is_guest || false,
+      guest_session_id: userData.guest_session_id || null,
+    }])
     .select()
     .single();
 
@@ -65,6 +75,18 @@ export async function findUserById(id: string) {
   return data;
 }
 
+export async function findGuestBySessionId(sessionId: string) {
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('*')
+    .eq('guest_session_id', sessionId)
+    .eq('is_guest', true)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
 export async function updateUser(id: string, updates: Partial<User>) {
   const { data, error } = await supabaseAdmin
     .from('users')
@@ -77,7 +99,95 @@ export async function updateUser(id: string, updates: Partial<User>) {
   return data;
 }
 
-// Category functions
+// Guest to Real User Upgrade Functions
+export async function upgradeGuestToRealUser(
+  guestUserId: string,
+  email: string,
+  password: string,
+  name: string
+) {
+  try {
+    // Check if email already exists for a real user
+    const { data: existingUser } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .eq('is_guest', false)
+      .single();
+
+    if (existingUser) {
+      throw new Error('Email already exists');
+    }
+
+    // Update guest user to real user
+    const { data: upgradedUser, error } = await supabaseAdmin
+      .from('users')
+      .update({
+        email: email,
+        password_hash: password,
+        name: name,
+        is_guest: false,
+        email_verified: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', guestUserId)
+      .eq('is_guest', true)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    console.log('✅ Successfully upgraded guest to real user:', upgradedUser.id);
+    return upgradedUser;
+  } catch (error) {
+    console.error('❌ Error upgrading guest user:', error);
+    throw error;
+  }
+}
+
+export async function mergeGuestDataToRealUser(
+  guestUserId: string,
+  realUserId: string
+) {
+  try {
+    // Start a transaction-like operation
+    const operations = [];
+
+    // Merge cart items
+    operations.push(
+      supabaseAdmin
+        .from('cart_items')
+        .update({ user_id: realUserId })
+        .eq('user_id', guestUserId)
+    );
+
+    // Merge addresses
+    operations.push(
+      supabaseAdmin
+        .from('user_addresses')
+        .update({ user_id: realUserId })
+        .eq('user_id', guestUserId)
+    );
+
+    // Merge orders
+    operations.push(
+      supabaseAdmin
+        .from('orders')
+        .update({ user_id: realUserId })
+        .eq('user_id', guestUserId)
+    );
+
+    // Execute all operations
+    await Promise.all(operations);
+
+    console.log('✅ Successfully merged guest data to real user');
+  } catch (error) {
+    console.error('❌ Error merging guest data:', error);
+    throw error;
+  }
+}
+
+// Category functions (unchanged)
 export async function getCategories() {
   console.log('🔍 Fetching categories from database...');
   
@@ -111,7 +221,7 @@ export async function createCategory(categoryData: {
   return data;
 }
 
-// Product functions
+// Product functions (unchanged)
 export async function getProducts(options: {
   page?: number;
   limit?: number;
@@ -235,54 +345,93 @@ export async function updateProduct(id: string, updates: Partial<Product>) {
   return data;
 }
 
-// Cart functions
+// Enhanced Cart functions with better error handling and logging
 export async function getCartItems(userId: string) {
-  const { data, error } = await supabase
-    .from('cart_items')
-    .select(`
-      *,
-      product:products(*)
-    `)
-    .eq('user_id', userId);
+  try {
+    console.log('🛒 Fetching cart items for user:', userId);
+    
+    const { data, error } = await supabase
+      .from('cart_items')
+      .select(`
+        *,
+        product:products(*)
+      `)
+      .eq('user_id', userId);
 
-  if (error) throw error;
-  return data;
+    if (error) {
+      console.error('❌ Error fetching cart items:', error);
+      return [];
+    }
+
+    console.log('✅ Cart items fetched:', data?.length || 0);
+    return data || [];
+  } catch (error) {
+    console.error('❌ Cart fetch error:', error);
+    return [];
+  }
 }
 
 export async function addToCart(cartData: {
   user_id: string;
   product_id: string;
   quantity: number;
+  size?: string;
+  color?: string;
 }) {
-  // Check if item already exists
-  const { data: existingItem } = await supabase
-    .from('cart_items')
-    .select('*')
-    .eq('user_id', cartData.user_id)
-    .eq('product_id', cartData.product_id)
-    .single();
+  try {
+    console.log('➕ Adding to cart:', { 
+      userId: cartData.user_id, 
+      productId: cartData.product_id, 
+      quantity: cartData.quantity 
+    });
 
-  if (existingItem) {
-    // Update quantity
-    const { data, error } = await supabase
+    // Check if item already exists with same attributes
+    const { data: existingItem } = await supabase
       .from('cart_items')
-      .update({ quantity: existingItem.quantity + cartData.quantity })
-      .eq('id', existingItem.id)
-      .select()
+      .select('*')
+      .eq('user_id', cartData.user_id)
+      .eq('product_id', cartData.product_id)
+      .eq('size', cartData.size || '')
+      .eq('color', cartData.color || '')
       .single();
 
-    if (error) throw error;
-    return data;
-  } else {
-    // Insert new item
-    const { data, error } = await supabase
-      .from('cart_items')
-      .insert([cartData])
-      .select()
-      .single();
+    if (existingItem) {
+      // Update quantity
+      console.log('🔄 Updating existing cart item quantity');
+      const { data, error } = await supabase
+        .from('cart_items')
+        .update({ 
+          quantity: existingItem.quantity + cartData.quantity,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingItem.id)
+        .select()
+        .single();
 
-    if (error) throw error;
-    return data;
+      if (error) throw error;
+      console.log('✅ Cart item quantity updated');
+      return data;
+    } else {
+      // Insert new item
+      console.log('🆕 Creating new cart item');
+      const { data, error } = await supabase
+        .from('cart_items')
+        .insert([{
+          ...cartData,
+          size: cartData.size || '',
+          color: cartData.color || '',
+          created_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      console.log('✅ New cart item created');
+      return data;
+    }
+  } catch (error) {
+    console.error('❌ Error adding to cart:', error);
+    throw error;
   }
 }
 
@@ -291,38 +440,65 @@ export async function updateCartItem(id: string, quantity: number) {
     return removeCartItem(id);
   }
 
-  const { data, error } = await supabase
-    .from('cart_items')
-    .update({ quantity })
-    .eq('id', id)
-    .select()
-    .single();
+  try {
+    console.log('📝 Updating cart item:', { id, quantity });
+    
+    const { data, error } = await supabase
+      .from('cart_items')
+      .update({ 
+        quantity,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    console.log('✅ Cart item updated');
+    return data;
+  } catch (error) {
+    console.error('❌ Error updating cart item:', error);
+    throw error;
+  }
 }
 
 export async function removeCartItem(id: string) {
-  const { error } = await supabase
-    .from('cart_items')
-    .delete()
-    .eq('id', id);
+  try {
+    console.log('🗑️ Removing cart item:', id);
+    
+    const { error } = await supabase
+      .from('cart_items')
+      .delete()
+      .eq('id', id);
 
-  if (error) throw error;
-  return true;
+    if (error) throw error;
+    console.log('✅ Cart item removed');
+    return true;
+  } catch (error) {
+    console.error('❌ Error removing cart item:', error);
+    throw error;
+  }
 }
 
 export async function clearCart(userId: string) {
-  const { error } = await supabase
-    .from('cart_items')
-    .delete()
-    .eq('user_id', userId);
+  try {
+    console.log('🧹 Clearing cart for user:', userId);
+    
+    const { error } = await supabase
+      .from('cart_items')
+      .delete()
+      .eq('user_id', userId);
 
-  if (error) throw error;
-  return true;
+    if (error) throw error;
+    console.log('✅ Cart cleared');
+    return true;
+  } catch (error) {
+    console.error('❌ Error clearing cart:', error);
+    throw error;
+  }
 }
 
-// Order functions
+// Enhanced Order functions with guest support
 export async function createOrder(orderData: {
   user_id: string;
   order_number: string;
@@ -330,6 +506,9 @@ export async function createOrder(orderData: {
   shipping_cost: number;
   shipping_address: any;
   billing_address?: any;
+  payment_reference?: string;
+  payment_status?: string;
+  is_guest_order?: boolean;
   items: {
     product_id: string;
     quantity: number;
@@ -339,29 +518,41 @@ export async function createOrder(orderData: {
 }) {
   const { items, ...order } = orderData;
 
-  // Create order
-  const { data: newOrder, error: orderError } = await supabase
-    .from('orders')
-    .insert([order])
-    .select()
-    .single();
+  try {
+    console.log('📦 Creating order:', order.order_number);
+    
+    // Create order
+    const { data: newOrder, error: orderError } = await supabase
+      .from('orders')
+      .insert([{
+        ...order,
+        is_guest_order: orderData.is_guest_order || false,
+        created_at: new Date().toISOString(),
+      }])
+      .select()
+      .single();
 
-  if (orderError) throw orderError;
+    if (orderError) throw orderError;
 
-  // Create order items
-  const orderItems = items.map(item => ({
-    ...item,
-    order_id: newOrder.id,
-  }));
+    // Create order items
+    const orderItems = items.map(item => ({
+      ...item,
+      order_id: newOrder.id,
+    }));
 
-  const { data: newOrderItems, error: itemsError } = await supabase
-    .from('order_items')
-    .insert(orderItems)
-    .select();
+    const { data: newOrderItems, error: itemsError } = await supabase
+      .from('order_items')
+      .insert(orderItems)
+      .select();
 
-  if (itemsError) throw itemsError;
+    if (itemsError) throw itemsError;
 
-  return { ...newOrder, order_items: newOrderItems };
+    console.log('✅ Order created successfully:', newOrder.id);
+    return { ...newOrder, order_items: newOrderItems };
+  } catch (error) {
+    console.error('❌ Error creating order:', error);
+    throw error;
+  }
 }
 
 export async function getOrders(userId: string, options: {
@@ -411,7 +602,7 @@ export async function getOrderById(id: string, userId: string) {
   return data;
 }
 
-// Address functions
+// Address functions (unchanged)
 export async function getUserAddresses(userId: string) {
   const { data, error } = await supabase
     .from('user_addresses')
