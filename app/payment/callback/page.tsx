@@ -104,7 +104,7 @@ export default function PaymentCallbackPage() {
         // Create order with authentication headers
         const orderResponse = await fetch('/api/orders', {
           method: 'POST',
-          headers: sessionManager.getApiHeaders(),
+          headers: sessionManager!.getApiHeaders(), // We already checked for null above
           body: JSON.stringify({
             paymentMethod: 'flutterwave',
             paymentReference: tx_ref,

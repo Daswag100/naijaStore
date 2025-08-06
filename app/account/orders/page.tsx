@@ -49,7 +49,10 @@ export default function OrderHistoryPage() {
   }, [sessionManager, user]);
 
   const loadOrders = async () => {
-    if (!sessionManager) return;
+    if (!sessionManager) {
+      console.log('⏳ SessionManager not ready, skipping orders load');
+      return;
+    }
     
     try {
       setLoading(true);

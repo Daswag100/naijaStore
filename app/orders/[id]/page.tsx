@@ -58,7 +58,10 @@ function OrderDetailPage() {
   }, [orderId, sessionManager]);
 
   const loadOrder = async () => {
-    if (!sessionManager) return;
+    if (!sessionManager) {
+      console.log('⏳ SessionManager not ready, skipping order load');
+      return;
+    }
     
     try {
       setLoading(true);
@@ -110,6 +113,12 @@ function OrderDetailPage() {
 
   // 🔽 ADD: Handle Buy Again functionality
   const handleBuyAgain = async (item: OrderItem) => {
+    if (!sessionManager) {
+      console.log('❌ SessionManager not ready, cannot add to cart');
+      alert('Please wait a moment and try again.');
+      return;
+    }
+
     try {
       console.log('🛒 Adding to cart:', item.product_name);
       
