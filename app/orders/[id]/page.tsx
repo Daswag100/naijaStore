@@ -68,53 +68,30 @@ function OrderDetailPage() {
 
       const response = await fetch(`/api/orders/${orderId}`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: sessionManager.getApiHeaders(),
+        // Add timeout to prevent hanging on the main order fetch
+        signal: AbortSignal.timeout(10000)
       });
 
       if (response.ok) {
         const data = await response.json();
         
-        // 🔽 ENHANCED: Fetch product images for each order item
-        const enhancedOrderItems = await Promise.all(
-          data.order.order_items.map(async (item: OrderItem) => {
-            // If we already have image_url, use it
-            if (item.image_url && item.image_url !== 'null' && item.image_url.trim() !== '') {
-              return item;
-            }
-
-            // If we have a real product_id, fetch the product details
-            if (item.product_id && item.product_id !== 'mock-product') {
-              try {
-                console.log(`🔍 Fetching product details for: ${item.product_name} (${item.product_id})`);
-                const productResponse = await fetch(`/api/products/${item.product_id}`);
-                if (productResponse.ok) {
-                  const productData = await productResponse.json();
-                  console.log(`✅ Found product image for ${item.product_name}:`, productData.product?.image_url);
-                  return {
-                    ...item,
-                    image_url: productData.product?.image_url || productData.product?.images?.[0] || null,
-                    product_slug: productData.product?.slug || item.product_slug
-                  };
-                }
-              } catch (error) {
-                console.error(`❌ Failed to fetch product ${item.product_id}:`, error);
-              }
-            }
-
-            // Return original item if we can't fetch product details
-            return item;
-          })
-        );
+        // 🔽 SIMPLIFIED: Just use the order items as they are to avoid API call issues
+        const processedItems = data.order.order_items.map((item: OrderItem) => ({
+          ...item,
+          // Use fallback image if no image_url
+          image_url: (item.image_url && item.image_url !== 'null' && item.image_url.trim() !== '') 
+            ? item.image_url 
+            : null
+        }));
 
         setOrder({
           ...data.order,
-          order_items: enhancedOrderItems
+          order_items: processedItems
         });
         
         console.log('✅ Order loaded:', data.order.order_number);
-        console.log('📦 Order items with images:', enhancedOrderItems.map((item: OrderItem) => ({
+        console.log('📦 Order items with images:', processedItems.map((item: OrderItem) => ({
           name: item.product_name,
           image: item.image_url,
           slug: item.product_slug
@@ -139,9 +116,7 @@ function OrderDetailPage() {
       // Add item to cart
       const response = await fetch('/api/cart', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: sessionManager.getApiHeaders(),
         body: JSON.stringify({
           product_id: item.product_id,
           quantity: 1,

@@ -32,7 +32,17 @@ export function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const { state } = useCart();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
+
+  // Debug logging for auth state
+  useEffect(() => {
+    console.log('🔄 Navigation - Auth state updated:', { 
+      isAuthenticated, 
+      isLoading, 
+      userEmail: user?.email,
+      userName: user?.name 
+    });
+  }, [isAuthenticated, isLoading, user]);
 
   // Handle search functionality
   const handleSearch = (e: React.FormEvent) => {
@@ -166,7 +176,12 @@ export function Navigation() {
             </Link>
 
             {/* User Menu */}
-            {isAuthenticated ? (
+            {isLoading ? (
+              <div className="flex items-center space-x-2 p-3">
+                <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="hidden xl:block text-sm text-gray-500">Loading...</span>
+              </div>
+            ) : isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button 
@@ -275,7 +290,12 @@ export function Navigation() {
               </div>
 
               {/* Mobile Auth */}
-              {!isAuthenticated && (
+              {isLoading ? (
+                <div className="pt-4 border-t border-gray-100 flex items-center justify-center space-x-2 p-4">
+                  <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-gray-500">Loading...</span>
+                </div>
+              ) : !isAuthenticated && (
                 <div className="pt-4 border-t border-gray-100 space-y-3">
                   <Link href="/login" onClick={() => setIsOpen(false)}>
                     <Button variant="outline" className="w-full h-12 text-base rounded-full">
@@ -291,7 +311,7 @@ export function Navigation() {
               )}
 
               {/* Mobile User Info */}
-              {isAuthenticated && (
+              {!isLoading && isAuthenticated && (
                 <div className="pt-4 border-t border-gray-100">
                   <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
                     <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">

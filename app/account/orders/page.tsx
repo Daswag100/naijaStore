@@ -59,9 +59,7 @@ export default function OrderHistoryPage() {
 
       const response = await fetch('/api/orders', {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: sessionManager.getApiHeaders(),
       });
 
       if (response.ok) {

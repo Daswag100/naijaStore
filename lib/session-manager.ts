@@ -111,13 +111,13 @@ export class SessionManager {
     return localStorage.getItem('naijastore_user_id');
   }
 
-  // FIXED: Get headers for API calls - properly handle real user auth
+  // FIXED: Get headers for API calls - prioritize real user auth
   public getApiHeaders(): HeadersInit {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
 
-    // Check if user is authenticated with real account
+    // Check if user is authenticated with real account - PRIORITY
     if (this.isAuthenticated()) {
       const userId = this.getRealUserId();
       if (userId) {

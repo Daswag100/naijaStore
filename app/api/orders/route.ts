@@ -17,11 +17,23 @@ export async function GET(request: NextRequest) {
   try {
     console.log('📋 Fetching user orders...');
     
-    // Use the same mock user ID as your POST function
-    const mockUserId = 'e87c74f2-8275-4b90-a6f7-216cd1dbdd41';
-    const mockEmail = 'event@gmail.com';
+    // Get Authorization header with real user ID
+    const authHeader = request.headers.get('Authorization');
+    let userId = null;
     
-    console.log('🆔 Fetching orders for user:', mockUserId);
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      userId = authHeader.substring(7); // Remove 'Bearer ' prefix
+      console.log('🔐 Using authenticated user:', userId);
+    } else {
+      console.log('❌ No valid authentication found');
+      return NextResponse.json({
+        error: 'Authentication required',
+        orders: [],
+        total: 0
+      }, { status: 401 });
+    }
+    
+    console.log('🆔 Fetching orders for user:', userId);
 
     // Fetch orders for this user
     const { data: orders, error: ordersError } = await supabaseAdmin
@@ -30,7 +42,7 @@ export async function GET(request: NextRequest) {
         *,
         order_items(*)
       `)
-      .eq('user_id', mockUserId)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
     
     if (ordersError) {
@@ -60,11 +72,21 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📦 Creating order with data:', body);
     
-    // Use the mock user ID from your logs - this is working
-    const mockUserId = 'e87c74f2-8275-4b90-a6f7-216cd1dbdd41';
-    const mockEmail = 'event@gmail.com';
+    // Get Authorization header with real user ID
+    const authHeader = request.headers.get('Authorization');
+    let userId = null;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      userId = authHeader.substring(7); // Remove 'Bearer ' prefix
+      console.log('🔐 Using authenticated user:', userId);
+    } else {
+      console.log('❌ No valid authentication found');
+      return NextResponse.json({
+        error: 'Authentication required'
+      }, { status: 401 });
+    }
 
-    console.log('🆔 Using mock user:', mockUserId);
+    console.log('🆔 Using authenticated user:', userId);
 
     // Get user's cart items
     const { data: cartItems, error: cartError } = await supabaseAdmin
@@ -73,7 +95,7 @@ export async function POST(request: NextRequest) {
         *,
         product:products(*)
       `)
-      .eq('user_id', mockUserId);
+      .eq('user_id', userId);
     
     if (cartError) {
       console.error('❌ Cart fetch error:', cartError);
@@ -111,11 +133,18 @@ export async function POST(request: NextRequest) {
     // Generate order number
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
 
+    // Get user profile for shipping address
+    const { data: userProfile, error: profileError } = await supabaseAdmin
+      .from('users')
+      .select('email, name, phone')
+      .eq('id', userId)
+      .single();
+
     // Create shipping address
     const shippingAddress = body.shippingAddress || {
-      name: 'Test Customer',
-      email: mockEmail,
-      phone: body.phone || '',
+      name: userProfile?.name || 'Customer',
+      email: userProfile?.email || '',
+      phone: userProfile?.phone || body.phone || '',
       address_line1: body.address || 'Default Address',
       city: body.city || 'Lagos',
       state: body.state || 'Lagos',
@@ -126,7 +155,7 @@ export async function POST(request: NextRequest) {
     const { data: newOrder, error: orderError } = await supabaseAdmin
       .from('orders')
       .insert([{
-        user_id: mockUserId,
+        user_id: userId,
         order_number: orderNumber,
         status: 'pending',
         payment_status: body.paymentReference ? 'paid' : 'pending',
@@ -182,7 +211,7 @@ export async function POST(request: NextRequest) {
     const { error: clearError } = await supabaseAdmin
       .from('cart_items')
       .delete()
-      .eq('user_id', mockUserId);
+      .eq('user_id', userId);
 
     if (clearError) {
       console.error('⚠️ Cart clear error:', clearError);

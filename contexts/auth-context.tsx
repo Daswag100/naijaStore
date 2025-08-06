@@ -41,6 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: false,
   });
 
+  // Force re-render counter for components using useAuth
+  const [renderKey, setRenderKey] = useState(0);
+
   // Get SessionManager instance
   const [sessionManager, setSessionManager] = useState<SessionManager | null>(null);
 
@@ -57,10 +60,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Get initial session
     const initializeAuth = async () => {
       try {
+        console.log('🔄 Initializing auth state...');
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Error getting session:', error);
+          console.error('❌ Error getting session:', error);
           if (mounted) {
             setState({
               user: null,
@@ -71,17 +75,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        console.log('📍 Session check result:', session?.user?.email || 'No session');
+
         if (session?.user && mounted) {
+          console.log('✅ Found existing session, loading user profile...');
           await loadUserProfile(session.user);
         } else if (mounted) {
+          console.log('❌ No existing session found');
           setState({
             user: null,
             isLoading: false,
             isAuthenticated: false,
           });
+          setRenderKey(prev => prev + 1);
         }
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        console.error('❌ Error initializing auth:', error);
         if (mounted) {
           setState({
             user: null,
@@ -92,15 +101,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    // Initialize immediately - no delay needed
     initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.email);
+      console.log('🔄 Auth state changed:', event, session?.user?.email || 'No session');
       
       if (!mounted) return;
 
       if (event === 'SIGNED_OUT' || !session?.user) {
+        console.log('👤 User signed out or session lost');
         // FIXED: Clear SessionManager on logout
         if (sessionManager) {
           sessionManager.clearSession();
@@ -110,7 +121,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           isLoading: false,
           isAuthenticated: false,
         });
+        setRenderKey(prev => prev + 1);
       } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        console.log('✅ User signed in or token refreshed');
         if (session?.user) {
           await loadUserProfile(session.user);
         }
@@ -124,9 +137,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [sessionManager]);
 
   const loadUserProfile = async (supabaseUser: SupabaseUser) => {
-    console.log('Loading user profile for:', supabaseUser.email);
+    console.log('✅ Loading user profile for:', supabaseUser.email);
     
     try {
+      // FIXED: Upgrade SessionManager to real user FIRST
+      if (sessionManager) {
+        console.log('🔄 Upgrading SessionManager to real user:', supabaseUser.id);
+        sessionManager.upgradeToRealUser(supabaseUser.id);
+      }
+
       // Create basic user first from Supabase auth data
       const basicUser: User = {
         id: supabaseUser.id,
@@ -136,18 +155,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         addresses: [],
       };
 
-      // FIXED: Upgrade SessionManager to real user
-      if (sessionManager) {
-        console.log('🔄 Upgrading SessionManager to real user:', supabaseUser.id);
-        sessionManager.upgradeToRealUser(supabaseUser.id);
-      }
-
       // Set user immediately with basic data to prevent logout
+      console.log('⚡ Setting user immediately:', basicUser.email);
       setState({
         user: basicUser,
         isLoading: false,
         isAuthenticated: true,
       });
+      setRenderKey(prev => prev + 1);
 
       // Try to get enhanced profile data, but don't fail if it doesn't work
       try {
@@ -210,6 +225,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           isLoading: false,
           isAuthenticated: true,
         });
+        setRenderKey(prev => prev + 1);
 
         console.log('✅ User profile loaded successfully');
 
@@ -238,6 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      console.log('🔐 Attempting login for:', email);
       setState(prev => ({ ...prev, isLoading: true }));
       
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -246,16 +263,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
-        console.error('Login error:', error);
+        console.error('❌ Login error:', error.message);
         setState(prev => ({ ...prev, isLoading: false }));
         return false;
       }
 
-      console.log('✅ Login successful for:', email);
-      // Don't set loading to false here - let the auth state change handler do it
+      if (!data.user || !data.session) {
+        console.error('❌ Login failed: No user or session returned');
+        setState(prev => ({ ...prev, isLoading: false }));
+        return false;
+      }
+
+      console.log('✅ Login successful for:', email, '- User ID:', data.user.id);
+      // The auth state change handler will update the state with user data
       return true;
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ Login error:', error);
       setState(prev => ({ ...prev, isLoading: false }));
       return false;
     }

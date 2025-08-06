@@ -8,17 +8,26 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useCart } from '@/contexts/cart-context';
+import { SessionManager } from '@/lib/session-manager';
+import { useAuth } from '@/contexts/auth-context';
 
 export default function PaymentCallbackPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const { clearCart } = useCart();
+  const { user } = useAuth();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Processing your payment...');
   const [orderId, setOrderId] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
+  const [sessionManager, setSessionManager] = useState<SessionManager | null>(null);
   const processedRef = useRef(false); // Prevent multiple executions
+
+  // Initialize session manager
+  useEffect(() => {
+    setSessionManager(SessionManager.getInstance());
+  }, []);
 
   const addDebug = (msg: string) => {
     console.log('🔍 DEBUG:', msg);
@@ -26,6 +35,12 @@ export default function PaymentCallbackPage() {
   };
 
   useEffect(() => {
+    // Wait for session manager and user to be available
+    if (!sessionManager || !user) {
+      addDebug(`Waiting for auth... SessionManager: ${!!sessionManager}, User: ${!!user}`);
+      return;
+    }
+
     // Prevent multiple executions
     if (processedRef.current) {
       addDebug('Already processed, skipping...');
@@ -86,12 +101,10 @@ export default function PaymentCallbackPage() {
         addDebug('Payment verified, creating order...');
         setMessage('Creating your order...');
 
-        // Create order without auth header for now
+        // Create order with authentication headers
         const orderResponse = await fetch('/api/orders', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: sessionManager.getApiHeaders(),
           body: JSON.stringify({
             paymentMethod: 'flutterwave',
             paymentReference: tx_ref,
@@ -101,9 +114,9 @@ export default function PaymentCallbackPage() {
             shippingCost: 0,
             total: verifyData.data.amount || 0,
             shippingAddress: {
-              name: 'Customer',
-              email: 'customer@example.com', // We'll get this from token later
-              phone: '',
+              name: user.name || 'Customer',
+              email: user.email || 'customer@example.com',
+              phone: user.phone || '',
               address_line1: 'Default Address',
               city: 'Lagos',
               state: 'Lagos',
@@ -163,7 +176,7 @@ export default function PaymentCallbackPage() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchParams, router, toast, clearCart]);
+  }, [searchParams, router, toast, clearCart, sessionManager, user]);
 
   return (
     <div className="container mx-auto px-4 py-16">

@@ -15,7 +15,7 @@ export const POST = rateLimit(3, 15 * 60 * 1000)(async (request: NextRequest) =>
     const validatedData = forgotPasswordSchema.parse(body);
 
     // Find user
-    const user = findUserByEmail(validatedData.email);
+    const user = await findUserByEmail(validatedData.email);
     if (!user) {
       // Don't reveal if email exists
       return NextResponse.json({
@@ -28,10 +28,10 @@ export const POST = rateLimit(3, 15 * 60 * 1000)(async (request: NextRequest) =>
     const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     // Update user with reset code
-    updateUser(user.id, {
+    await updateUser(user.id, {
       passwordResetCode: resetCode,
       passwordResetExpires: resetExpires,
-    });
+    } as any);
 
     // Send reset email
     await sendEmail({

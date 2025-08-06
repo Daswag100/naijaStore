@@ -22,7 +22,21 @@ export async function GET(request: NextRequest) {
     
     console.log('📋 Fetching order:', orderId);
 
-    // Get order with items (no auth for testing)
+    // Get Authorization header with real user ID
+    const authHeader = request.headers.get('Authorization');
+    let userId = null;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      userId = authHeader.substring(7); // Remove 'Bearer ' prefix
+      console.log('🔐 Using authenticated user:', userId);
+    } else {
+      console.log('❌ No valid authentication found');
+      return NextResponse.json({
+        error: 'Authentication required'
+      }, { status: 401 });
+    }
+
+    // Get order with items for authenticated user only
     const { data: order, error: orderError } = await supabaseAdmin
       .from('orders')
       .select(`
@@ -30,6 +44,7 @@ export async function GET(request: NextRequest) {
         order_items(*)
       `)
       .eq('id', orderId)
+      .eq('user_id', userId)
       .single();
 
     if (orderError || !order) {

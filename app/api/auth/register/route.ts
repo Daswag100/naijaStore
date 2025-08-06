@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     console.log('📧 Creating user in Supabase Auth:', validatedData.email);
 
-    const { data: authData, error: authError } = await supabaseAdmin.auth.createUser({
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: validatedData.email,
       password: validatedData.password,
       email_confirm: true, // Auto-confirm email for simplicity, you might want to change this

@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
       },
       order_items: (order.order_items || []).map(item => ({
         ...item,
-        product_image: item.products?.images?.[0] || null
+        product_image: (item.products as any)?.images?.[0] || null
       }))
     })) || [];
 
