@@ -1,6 +1,8 @@
+// app/admin/orders/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { 
   Search, 
   Filter, 
@@ -10,7 +12,8 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  MoreHorizontal
+  MoreHorizontal,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +32,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatNaira, formatDate } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -37,105 +48,142 @@ interface Order {
   order_number: string;
   user_id: string;
   status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  payment_status: 'pending' | 'paid' | 'failed' | 'refunded';
   total_amount: number;
   shipping_cost: number;
   shipping_address: any;
+  tracking_number?: string;
+  notes?: string;
   created_at: string;
   updated_at: string;
   customer?: {
     name: string;
     email: string;
+    phone?: string;
   };
   order_items?: Array<{
     id: string;
     product_name: string;
     quantity: number;
     price: number;
+    product_image?: string;
   }>;
 }
 
-// Mock data - replace with real API calls
-const mockOrders: Order[] = [
-  {
-    id: "1",
-    order_number: "NS001234567",
-    user_id: "user1",
-    status: "pending",
-    total_amount: 125000,
-    shipping_cost: 2000,
-    shipping_address: { city: "Lagos", state: "Lagos" },
-    created_at: "2024-01-15T10:30:00Z",
-    updated_at: "2024-01-15T10:30:00Z",
-    customer: { name: "John Doe", email: "john@example.com" },
-    order_items: [
-      { id: "1", product_name: "Samsung Galaxy S24", quantity: 1, price: 125000 }
-    ]
-  },
-  {
-    id: "2",
-    order_number: "NS001234568",
-    user_id: "user2",
-    status: "processing",
-    total_amount: 85000,
-    shipping_cost: 2000,
-    shipping_address: { city: "Abuja", state: "FCT" },
-    created_at: "2024-01-14T15:45:00Z",
-    updated_at: "2024-01-14T16:00:00Z",
-    customer: { name: "Jane Smith", email: "jane@example.com" },
-    order_items: [
-      { id: "2", product_name: "Nike Air Force 1", quantity: 1, price: 85000 }
-    ]
-  },
-  {
-    id: "3",
-    order_number: "NS001234569",
-    user_id: "user3",
-    status: "shipped",
-    total_amount: 195000,
-    shipping_cost: 3000,
-    shipping_address: { city: "Ibadan", state: "Oyo" },
-    created_at: "2024-01-13T09:15:00Z",
-    updated_at: "2024-01-14T14:20:00Z",
-    customer: { name: "Mike Johnson", email: "mike@example.com" },
-    order_items: [
-      { id: "3", product_name: "Sony WH-1000XM4", quantity: 1, price: 195000 }
-    ]
-  },
-  {
-    id: "4",
-    order_number: "NS001234570",
-    user_id: "user4",
-    status: "delivered",
-    total_amount: 65000,
-    shipping_cost: 2000,
-    shipping_address: { city: "Lagos", state: "Lagos" },
-    created_at: "2024-01-12T11:20:00Z",
-    updated_at: "2024-01-13T16:45:00Z",
-    customer: { name: "Sarah Wilson", email: "sarah@example.com" },
-    order_items: [
-      { id: "4", product_name: "Adidas Ultraboost", quantity: 1, price: 65000 }
-    ]
-  },
-];
-
-export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>(mockOrders);
-  const [loading, setLoading] = useState(false);
+export default function AdminOrdersPage() {
+  const router = useRouter();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [statusUpdateDialog, setStatusUpdateDialog] = useState<{
+    open: boolean;
+    orderId: string;
+    currentStatus: string;
+  }>({ open: false, orderId: '', currentStatus: '' });
+  const [newStatus, setNewStatus] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [updating, setUpdating] = useState(false);
   const { toast } = useToast();
 
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = 
-      order.order_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customer?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customer?.email.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
+  // Fetch orders from API
+  const fetchOrders = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: '20',
+        ...(statusFilter !== 'all' && { status: statusFilter }),
+        ...(searchQuery && { search: searchQuery })
+      });
+      
+      const response = await fetch(`/api/admin/orders?${params}`, {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setOrders(data.orders);
+        setTotalPages(data.pagination.totalPages);
+        console.log('✅ Orders loaded:', data.orders.length);
+      } else {
+        throw new Error(data.error || 'Failed to fetch orders');
+      }
+    } catch (error) {
+      console.error('❌ Orders fetch error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch orders",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle status update
+  const handleStatusUpdate = async (orderId: string, newStatus: string, trackingNumber?: string) => {
+    setUpdating(true);
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          status: newStatus,
+          tracking_number: trackingNumber || null
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        // Update local state
+        setOrders(prev => prev.map(order => 
+          order.id === orderId 
+            ? { 
+                ...order, 
+                status: newStatus as any, 
+                tracking_number: trackingNumber,
+                updated_at: new Date().toISOString() 
+              }
+            : order
+        ));
+
+        toast({
+          title: "Success",
+          description: "Order status updated successfully. Customer has been notified.",
+        });
+
+        setStatusUpdateDialog({ open: false, orderId: '', currentStatus: '' });
+        setNewStatus('');
+        setTrackingNumber('');
+      } else {
+        throw new Error(data.error || 'Failed to update status');
+      }
+    } catch (error) {
+      console.error('❌ Status update error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update order status",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const openStatusDialog = (orderId: string, currentStatus: string) => {
+    setStatusUpdateDialog({ open: true, orderId, currentStatus });
+    setNewStatus(currentStatus);
+    setTrackingNumber('');
+  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -175,28 +223,6 @@ export default function OrdersPage() {
     }
   };
 
-  const handleStatusUpdate = async (orderId: string, newStatus: string) => {
-    try {
-      // Mock API call - replace with real implementation
-      setOrders(prev => prev.map(order => 
-        order.id === orderId 
-          ? { ...order, status: newStatus as any, updated_at: new Date().toISOString() }
-          : order
-      ));
-
-      toast({
-        title: "Success",
-        description: "Order status updated successfully",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update order status",
-        variant: "destructive",
-      });
-    }
-  };
-
   const statusOptions = [
     { value: 'pending', label: 'Pending' },
     { value: 'confirmed', label: 'Confirmed' },
@@ -206,12 +232,35 @@ export default function OrdersPage() {
     { value: 'cancelled', label: 'Cancelled' },
   ];
 
+  useEffect(() => {
+    fetchOrders();
+  }, [page, statusFilter]);
+
+  // Debounced search
+  useEffect(() => {
+    const delayedSearch = setTimeout(() => {
+      if (page === 1) {
+        fetchOrders();
+      } else {
+        setPage(1);
+      }
+    }, 500);
+
+    return () => clearTimeout(delayedSearch);
+  }, [searchQuery]);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
-        <p className="text-gray-600">Manage customer orders and track fulfillment</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Orders Management</h1>
+          <p className="text-gray-600">Manage customer orders and track fulfillment</p>
+        </div>
+        <Button onClick={fetchOrders} variant="outline" disabled={loading}>
+          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
       {/* Stats Cards */}
@@ -300,7 +349,7 @@ export default function OrdersPage() {
       {/* Orders List */}
       <Card>
         <CardHeader>
-          <CardTitle>Orders ({filteredOrders.length})</CardTitle>
+          <CardTitle>Orders ({orders.length})</CardTitle>
           <CardDescription>
             Manage and track customer orders
           </CardDescription>
@@ -310,7 +359,7 @@ export default function OrdersPage() {
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
             </div>
-          ) : filteredOrders.length === 0 ? (
+          ) : orders.length === 0 ? (
             <div className="text-center py-12">
               <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No orders found</h3>
@@ -323,7 +372,7 @@ export default function OrdersPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredOrders.map((order) => (
+              {orders.map((order) => (
                 <div key={order.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center space-x-3">
@@ -346,25 +395,23 @@ export default function OrdersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/admin/orders/details/${order.id}`)}
+                          >
                             <Eye className="w-4 h-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
-                          {statusOptions.map(status => (
-                            <DropdownMenuItem
-                              key={status.value}
-                              onClick={() => handleStatusUpdate(order.id, status.value)}
-                              disabled={order.status === status.value}
-                            >
-                              Mark as {status.label}
-                            </DropdownMenuItem>
-                          ))}
+                          <DropdownMenuItem
+                            onClick={() => openStatusDialog(order.id, order.status)}
+                          >
+                            Update Status
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                     <div>
                       <p className="text-gray-600">Order Date</p>
                       <p className="font-medium">{formatDate(order.created_at)}</p>
@@ -374,12 +421,25 @@ export default function OrdersPage() {
                       <p className="font-medium">{formatNaira(order.total_amount)}</p>
                     </div>
                     <div>
+                      <p className="text-gray-600">Payment Status</p>
+                      <Badge variant={order.payment_status === 'paid' ? 'default' : 'secondary'}>
+                        {order.payment_status}
+                      </Badge>
+                    </div>
+                    <div>
                       <p className="text-gray-600">Shipping Address</p>
                       <p className="font-medium">
                         {order.shipping_address?.city}, {order.shipping_address?.state}
                       </p>
                     </div>
                   </div>
+
+                  {order.tracking_number && (
+                    <div className="mt-3 pt-3 border-t">
+                      <p className="text-sm text-gray-600">Tracking Number:</p>
+                      <p className="font-medium text-sm">{order.tracking_number}</p>
+                    </div>
+                  )}
 
                   {order.order_items && order.order_items.length > 0 && (
                     <div className="mt-3 pt-3 border-t">
@@ -398,8 +458,93 @@ export default function OrdersPage() {
               ))}
             </div>
           )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center space-x-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setPage(Math.max(1, page - 1))}
+                disabled={page === 1 || loading}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-gray-600">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                onClick={() => setPage(Math.min(totalPages, page + 1))}
+                disabled={page === totalPages || loading}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Status Update Dialog */}
+      <Dialog open={statusUpdateDialog.open} onOpenChange={(open) => {
+        if (!open) {
+          setStatusUpdateDialog({ open: false, orderId: '', currentStatus: '' });
+          setNewStatus('');
+          setTrackingNumber('');
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Order Status</DialogTitle>
+            <DialogDescription>
+              Change the status of this order and optionally add a tracking number.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">New Status</label>
+              <Select value={newStatus} onValueChange={setNewStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select new status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {(newStatus === 'shipped' || newStatus === 'delivered') && (
+              <div>
+                <label className="text-sm font-medium">Tracking Number (Optional)</label>
+                <Input
+                  value={trackingNumber}
+                  onChange={(e) => setTrackingNumber(e.target.value)}
+                  placeholder="Enter tracking number..."
+                />
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setStatusUpdateDialog({ open: false, orderId: '', currentStatus: '' })}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => handleStatusUpdate(statusUpdateDialog.orderId, newStatus, trackingNumber)}
+              disabled={!newStatus || updating}
+            >
+              {updating ? 'Updating...' : 'Update Status'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

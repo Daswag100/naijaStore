@@ -1,3 +1,4 @@
+// components/flutterwave-checkout.tsx - FIXED VERSION
 "use client";
 
 import React, { useState } from 'react';
@@ -8,7 +9,7 @@ import { useCart } from '@/contexts/cart-context';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
-import { generateOrderNumber } from '@/lib/database';
+import { supabase } from '@/lib/supabase';
 
 interface FlutterwaveCheckoutProps {
   className?: string;
@@ -28,15 +29,16 @@ export function FlutterwaveCheckout({
   const [isProcessing, setIsProcessing] = useState(false);
 
   const finalTotal = state.total - discount + shippingCost;
-  const orderNumber = generateOrderNumber();
+  const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
 
-  // Flutterwave configuration
   const config = {
     public_key: process.env.NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY!,
     tx_ref: orderNumber,
     amount: finalTotal,
     currency: 'NGN',
     payment_options: 'card,mobilemoney,ussd,banktransfer',
+    // ADD REDIRECT URL - This is crucial!
+    redirect_url: `${window.location.origin}/payment/callback?tx_ref=${orderNumber}`,
     customer: {
       email: user?.email || '',
       phone_number: user?.phone || '',
@@ -45,22 +47,29 @@ export function FlutterwaveCheckout({
     customizations: {
       title: 'NaijaStore Payment',
       description: `Payment for order ${orderNumber}`,
-      logo: '', // Add your logo URL here
+      logo: '',
     },
   };
 
   const handlePaymentSuccess = async (response: any) => {
+    console.log('💳 Payment callback received:', response);
     setIsProcessing(true);
     
     try {
-      console.log('Payment response:', response);
+      // Get current user session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No valid session found');
+      }
+
+      console.log('🔍 Verifying payment...');
 
       // 1. Verify payment with Flutterwave
       const verifyResponse = await fetch('/api/payment/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user?.id || 'mock-token'}`, // Use actual auth token
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           reference: response.tx_ref,
@@ -68,28 +77,27 @@ export function FlutterwaveCheckout({
         }),
       });
 
-      const verifyData = await verifyResponse.json();
-
-      if (!verifyResponse.ok || verifyData.status !== 'success') {
+      if (!verifyResponse.ok) {
+        const errorText = await verifyResponse.text();
+        console.error('❌ Payment verification failed:', errorText);
         throw new Error('Payment verification failed');
       }
+
+      const verifyData = await verifyResponse.json();
+      if (verifyData.status !== 'success') {
+        throw new Error('Payment verification failed');
+      }
+
+      console.log('✅ Payment verified, creating order...');
 
       // 2. Create order in your system
       const orderResponse = await fetch('/api/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user?.id || 'mock-token'}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          items: state.items.map(item => ({
-            productId: item.product_id,
-            quantity: item.quantity,
-            size: item.size,
-            color: item.color,
-          })),
-          // You'll need to implement address selection in your checkout flow
-          shippingAddressId: 'default-address-id', // Replace with actual address selection
           paymentMethod: 'flutterwave',
           paymentReference: response.tx_ref,
           transactionId: response.transaction_id,
@@ -97,28 +105,41 @@ export function FlutterwaveCheckout({
           discount: discount,
           shippingCost: shippingCost,
           total: finalTotal,
+          shippingAddress: {
+            name: user?.name || 'Customer',
+            email: user?.email || '',
+            phone: user?.phone || '',
+            address_line1: 'Default Address',
+            city: 'Lagos',
+            state: 'Lagos',
+            country: 'Nigeria',
+          },
         }),
       });
 
-      const orderData = await orderResponse.json();
-
       if (!orderResponse.ok) {
-        throw new Error(orderData.error || 'Failed to create order');
+        const errorText = await orderResponse.text();
+        console.error('❌ Order creation failed:', errorText);
+        throw new Error(`Order creation failed: ${errorText}`);
       }
 
-      // 3. Clear cart and redirect
-      await clearCart();
+      const orderData = await orderResponse.json();
+      console.log('✅ Order created successfully:', orderData.order.order_number);
+
+      // 3. Clear cart locally
+      clearCart();
+      console.log('✅ Cart cleared');
 
       toast({
         title: "Payment Successful! 🎉",
-        description: `Your order ${orderNumber} has been placed successfully.`,
+        description: `Your order ${orderData.order.order_number} has been placed successfully.`,
       });
 
-      // Redirect to order success page
+      // 4. Redirect to order success page
       router.push(`/orders/${orderData.order.id}?success=true`);
 
     } catch (error) {
-      console.error('Error processing payment:', error);
+      console.error('❌ Error processing payment:', error);
       toast({
         title: "Payment Error",
         description: error instanceof Error ? error.message : "There was an issue processing your payment. Please contact support.",

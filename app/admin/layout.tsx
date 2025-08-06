@@ -131,12 +131,13 @@ export default function AdminLayout({
         </div>
       )}
 
-      {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
+      {/* 🔽 FIXED: Sidebar with proper positioning */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
-        <div className="flex items-center justify-between h-16 px-6 border-b">
-          <div className="flex items-center space-x-2">
+        {/* Header section */}
+        <div className="flex items-center justify-between h-16 px-6 border-b bg-white">
+          <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">NS</span>
             </div>
@@ -152,8 +153,9 @@ export default function AdminLayout({
           </Button>
         </div>
 
-        <nav className="mt-6 px-3">
-          <div className="space-y-1">
+        {/* Navigation */}
+        <nav className="mt-6 px-4">
+          <div className="space-y-2">
             {navigation.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href || 
@@ -163,58 +165,74 @@ export default function AdminLayout({
                 <Link
                   key={item.name}
                   href={item.href}
-                  className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                  className={`group flex items-center w-full px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
                     isActive
-                      ? "bg-green-100 text-green-700"
+                      ? "bg-green-100 text-green-700 shadow-sm"
                       : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                   }`}
                   onClick={() => setSidebarOpen(false)}
                 >
-                  <Icon className="w-5 h-5 mr-3" />
-                  {item.name}
+                  <Icon className={`w-5 h-5 mr-3 transition-colors ${
+                    isActive ? "text-green-600" : "text-gray-400 group-hover:text-gray-600"
+                  }`} />
+                  <span className="truncate">{item.name}</span>
                 </Link>
               );
             })}
           </div>
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-3 border-t">
+        {/* Footer with logout */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t bg-gray-50">
           <Button
             variant="ghost"
             onClick={handleLogout}
-            className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+            className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 px-4 py-3 rounded-lg transition-colors"
           >
             <LogOut className="w-5 h-5 mr-3" />
-            Logout
+            <span>Logout</span>
           </Button>
         </div>
       </div>
 
-      {/* Main content */}
+      {/* 🔽 FIXED: Main content area with proper margins */}
       <div className="lg:pl-64">
         {/* Top bar */}
-        <div className="sticky top-0 z-10 bg-white shadow-sm border-b">
-          <div className="flex items-center justify-between h-16 px-6">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="lg:hidden"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <Menu className="w-5 h-5" />
-            </Button>
+        <div className="sticky top-0 z-10 bg-white shadow-sm border-b h-16">
+          <div className="flex items-center justify-between h-full px-6">
+            <div className="flex items-center space-x-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="lg:hidden"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <Menu className="w-5 h-5" />
+              </Button>
+              
+              <div className="hidden lg:block">
+                <h1 className="text-lg font-semibold text-gray-900">
+                  NaijaStore Admin Panel
+                </h1>
+              </div>
+            </div>
             
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">
-                Welcome to NaijaStore Admin
+              <span className="text-sm text-gray-600 hidden md:block">
+                Welcome back, Admin
               </span>
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                <span className="text-green-600 font-medium text-sm">A</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Page content */}
+        {/* 🔽 FIXED: Page content with proper spacing and no conflicting layout */}
         <main className="p-6">
-          {children}
+          <div className="max-w-7xl mx-auto">
+            {children}
+          </div>
         </main>
       </div>
     </div>

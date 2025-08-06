@@ -1,8 +1,8 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 import { loginSchema } from '@/lib/validation';
-import { findUserByEmail } from '@/lib/database';
+import { supabaseAdmin } from '@/lib/supabase';
 import { handleCors } from '@/lib/middleware';
-import bcrypt from 'bcryptjs';
 
 export async function OPTIONS(request: NextRequest) {
   return handleCors(request);
@@ -15,40 +15,33 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = loginSchema.parse(body);
 
-    console.log('📧 Looking for user:', validatedData.email);
+    console.log('📧 Attempting to sign in with Supabase for:', validatedData.email);
 
-    // Find user (add await!)
-    const user = await findUserByEmail(validatedData.email);
-    if (!user) {
-      console.log('❌ User not found');
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      );
+    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+        email: validatedData.email,
+        password: validatedData.password,
+    });
+
+    if (error) {
+        console.error('❌ Supabase login error:', error.message);
+        return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
-    console.log('✅ User found:', user.name);
-
-    // Check password (simple comparison for now)
-    const isValidPassword = await bcrypt.compare(validatedData.password, user.password_hash);
-    if (!isValidPassword) {
-      console.log('❌ Invalid password');
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      );
+    if (!data.user || !data.session) {
+        return NextResponse.json({ error: 'Login failed, please try again.' }, { status: 500 });
     }
 
-    console.log('✅ Password valid, login successful');
+    console.log('✅ Login successful, user ID:', data.user.id);
 
-    // Simple response (no JWT for now)
+    // The session object contains the JWT (access_token) and refresh_token
     return NextResponse.json({
       message: 'Login successful',
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.user_metadata.name,
       },
+      session: data.session,
     });
 
   } catch (error) {

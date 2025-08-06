@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { User, Mail, Phone, MapPin, Package, Settings, Plus, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +26,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { formatNaira, formatDate } from "@/lib/utils";
-import { SessionManager } from "@/lib/session-manager"; // Import SessionManager
+import { SessionManager } from "@/lib/session-manager";
 
 // Nigerian states for the dropdown
 const NIGERIAN_STATES = [
@@ -46,35 +47,176 @@ interface Address {
   created_at: string;
 }
 
-// Mock order data
-const mockOrders = [
-  {
-    id: "NS001234567",
-    date: "2024-01-15",
-    status: "Delivered",
-    total: 285000,
-    items: 3,
-  },
-  {
-    id: "NS001234568",
-    date: "2024-01-10",
-    status: "In Transit",
-    total: 125000,
-    items: 2,
-  },
-  {
-    id: "NS001234569",
-    date: "2024-01-05",
-    status: "Processing",
-    total: 65000,
-    items: 1,
-  },
-];
+// Order History Component
+function OrderHistory() {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sessionManager, setSessionManager] = useState<SessionManager | null>(null);
+  const { toast } = useToast();
+
+  // Initialize session manager
+  useEffect(() => {
+    setSessionManager(SessionManager.getInstance());
+  }, []);
+
+  // Load orders
+  useEffect(() => {
+    if (sessionManager) {
+      loadOrders();
+    }
+  }, [sessionManager]);
+
+  const loadOrders = async () => {
+    if (!sessionManager) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('📋 Loading user orders...');
+      
+      const response = await fetch('/api/orders', {
+        method: 'GET',
+        headers: sessionManager.getApiHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setOrders(data.orders || []);
+        console.log('✅ Orders loaded:', data.orders?.length || 0);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to load orders');
+      }
+    } catch (error) {
+      console.error('❌ Error loading orders:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load orders');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "delivered":
+        return "text-green-600 bg-green-100";
+      case "shipped":
+        return "text-blue-600 bg-blue-100";
+      case "processing":
+        return "text-yellow-600 bg-yellow-100";
+      case "confirmed":
+        return "text-blue-600 bg-blue-100";
+      case "pending":
+        return "text-orange-600 bg-orange-100";
+      case "cancelled":
+        return "text-red-600 bg-red-100";
+      default:
+        return "text-gray-600 bg-gray-100";
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
+        <p className="text-gray-600 mt-2">Loading your orders...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-8">
+        <Package className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <p className="text-red-600 mb-4">{error}</p>
+        <Button onClick={loadOrders} variant="outline">
+          Try Again
+        </Button>
+      </div>
+    );
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <Package className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">No orders yet</h3>
+        <p className="text-gray-600 mb-4">When you place orders, they'll appear here.</p>
+        <Link href="/products">
+          <Button className="bg-green-600 hover:bg-green-700">
+            Start Shopping
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {orders.map((order) => (
+        <div key={order.id} className="border rounded-lg p-4">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <h3 className="font-semibold">Order #{order.order_number}</h3>
+              <p className="text-sm text-gray-600">
+                Placed on {formatDate(order.created_at)}
+              </p>
+            </div>
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+              {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+            </span>
+          </div>
+          
+          <div className="flex justify-between items-center">
+            <div className="text-sm text-gray-600">
+              {order.order_items?.length || 0} items • {formatNaira(order.total_amount)}
+            </div>
+            <div className="flex space-x-2">
+              <Link href={`/orders/${order.id}`}>
+                <Button variant="outline" size="sm">
+                  View Details
+                </Button>
+              </Link>
+              {order.tracking_number && (
+                <Link href={`/orders/${order.id}/track`}>
+                  <Button variant="outline" size="sm">
+                    Track Order
+                  </Button>
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* Order Items Preview */}
+          {order.order_items && order.order_items.length > 0 && (
+            <div className="mt-3 pt-3 border-t">
+              <p className="text-sm text-gray-600 mb-2">Items:</p>
+              <div className="space-y-1">
+                {order.order_items.slice(0, 3).map((item: any) => (
+                  <div key={item.id} className="flex justify-between text-sm">
+                    <span>{item.product_name} × {item.quantity}</span>
+                    <span className="font-medium">{formatNaira(item.price * item.quantity)}</span>
+                  </div>
+                ))}
+                {order.order_items.length > 3 && (
+                  <p className="text-sm text-gray-500">
+                    +{order.order_items.length - 3} more items
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function AccountPage() {
   const { user, updateProfile, logout } = useAuth();
   const { toast } = useToast();
-  const [sessionManager, setSessionManager] = useState<SessionManager | null>(null); // Add SessionManager state
+  const [sessionManager, setSessionManager] = useState<SessionManager | null>(null);
   
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({
@@ -83,7 +225,7 @@ export default function AccountPage() {
     phone: user?.phone || "",
   });
 
-  // Profile management state (NEW)
+  // Profile management state
   const [profileData, setProfileData] = useState({
     name: '',
     email: '',
@@ -122,14 +264,14 @@ export default function AccountPage() {
     }
   }, [user, sessionManager]);
 
-  // Load profile on component mount (NEW)
+  // Load profile on component mount
   useEffect(() => {
     if (user && sessionManager) {
       loadProfile();
     }
   }, [user, sessionManager]);
 
-  // New loadProfile function
+  // Load profile function
   const loadProfile = async () => {
     if (!sessionManager) return;
     
@@ -153,7 +295,7 @@ export default function AccountPage() {
         };
 
         setProfileData(profileInfo);
-        setFormData(profileInfo); // Update form data too
+        setFormData(profileInfo);
       } else {
         // If profile doesn't exist, use user context data
         const fallbackData = {
@@ -189,7 +331,7 @@ export default function AccountPage() {
       
       const response = await fetch('/api/addresses', {
         method: 'GET',
-        headers: sessionManager.getApiHeaders(), // Use SessionManager headers
+        headers: sessionManager.getApiHeaders(),
       });
 
       if (!response.ok) {
@@ -225,7 +367,7 @@ export default function AccountPage() {
 
       const response = await fetch(url, {
         method,
-        headers: sessionManager.getApiHeaders(), // Use SessionManager headers
+        headers: sessionManager.getApiHeaders(),
         body: JSON.stringify({
           name: addressForm.name || `${addressForm.city} Address`,
           street: addressForm.street,
@@ -272,7 +414,7 @@ export default function AccountPage() {
     try {
       const response = await fetch(`/api/addresses/${addressId}`, {
         method: 'DELETE',
-        headers: sessionManager.getApiHeaders(), // Use SessionManager headers
+        headers: sessionManager.getApiHeaders(),
       });
 
       if (!response.ok) {
@@ -298,11 +440,11 @@ export default function AccountPage() {
   const handleEditAddress = (address: Address) => {
     setEditingAddress(address);
     setAddressForm({
-      name: '', // You might want to add a name field to your address schema
+      name: '',
       street: address.address_line1,
       city: address.city,
       state: address.state,
-      zipCode: '', // You might want to add zipCode to your schema
+      zipCode: '',
       country: address.country,
       isDefault: address.is_default,
     });
@@ -323,7 +465,7 @@ export default function AccountPage() {
     });
   };
 
-  // Updated handleSave function for profile
+  // Profile save function
   const handleSave = async () => {
     if (!sessionManager) return;
     
@@ -355,9 +497,6 @@ export default function AccountPage() {
       const result = await response.json();
       console.log('✅ Profile saved:', result.user);
 
-      // Show success alert
-      alert('Profile saved successfully!');
-      
       toast({
         title: "Success",
         description: "Profile updated successfully",
@@ -374,7 +513,6 @@ export default function AccountPage() {
 
     } catch (error) {
       console.error('❌ Error saving profile:', error);
-      alert('Failed to save profile. Please try again.');
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save profile",
@@ -382,19 +520,6 @@ export default function AccountPage() {
       });
     } finally {
       setIsSavingProfile(false);
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Delivered":
-        return "text-green-600 bg-green-100";
-      case "In Transit":
-        return "text-blue-600 bg-blue-100";
-      case "Processing":
-        return "text-yellow-600 bg-yellow-100";
-      default:
-        return "text-gray-600 bg-gray-100";
     }
   };
 
@@ -488,7 +613,7 @@ export default function AccountPage() {
                           variant="outline" 
                           onClick={() => {
                             setEditMode(false);
-                            setFormData(profileData); // Reset to saved data
+                            setFormData(profileData);
                           }}
                           disabled={isSavingProfile}
                         >
@@ -497,10 +622,7 @@ export default function AccountPage() {
                       </>
                     ) : (
                       <Button 
-                        onClick={() => {
-                          setEditMode(true);
-                          alert('You can now edit your profile information');
-                        }}
+                        onClick={() => setEditMode(true)}
                       >
                         Edit Profile
                       </Button>
@@ -524,31 +646,7 @@ export default function AccountPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {mockOrders.map((order) => (
-                  <div key={order.id} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="font-semibold">Order #{order.id}</h3>
-                        <p className="text-sm text-gray-600">
-                          Placed on {formatDate(order.date)}
-                        </p>
-                      </div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                        {order.status}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <div className="text-sm text-gray-600">
-                        {order.items} items • {formatNaira(order.total)}
-                      </div>
-                      <Button variant="outline" size="sm">
-                        View Details
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <OrderHistory />
             </CardContent>
           </Card>
         </TabsContent>
