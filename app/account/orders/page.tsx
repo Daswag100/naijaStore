@@ -135,7 +135,7 @@ export default function OrderHistoryPage() {
       <div className="container mx-auto px-4 py-16 text-center">
         <Package className="w-12 h-12 text-gray-300 mx-auto mb-4" />
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Please sign in to view your orders</h1>
-        <p className="text-gray-600 mb-6">You need logged in to access your order history.</p>
+        <p className="text-gray-600 mb-6">You need to be logged in to access your order history.</p>
         <Link href="/login">
           <Button className="bg-green-600 hover:bg-green-700">
             Sign In
