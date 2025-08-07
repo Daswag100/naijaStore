@@ -79,7 +79,7 @@ export function Navigation() {
                 NaijaStore
               </span>
               <span className="text-xs text-gray-500 -mt-1 hidden sm:block">
-                Nigeria's Premier Store
+                Nigeria&apos;s Premier Store
               </span>
             </div>
           </Link>
@@ -181,7 +181,7 @@ export function Navigation() {
                 <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
                 <span className="hidden xl:block text-sm text-gray-500">Loading...</span>
               </div>
-            ) : isAuthenticated ? (
+            ) : isAuthenticated && user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button 
@@ -295,7 +295,7 @@ export function Navigation() {
                   <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
                   <span className="text-gray-500">Loading...</span>
                 </div>
-              ) : !isAuthenticated && (
+              ) : (!isAuthenticated || !user) && (
                 <div className="pt-4 border-t border-gray-100 space-y-3">
                   <Link href="/login" onClick={() => setIsOpen(false)}>
                     <Button variant="outline" className="w-full h-12 text-base rounded-full">
@@ -311,7 +311,7 @@ export function Navigation() {
               )}
 
               {/* Mobile User Info */}
-              {!isLoading && isAuthenticated && (
+              {!isLoading && isAuthenticated && user && (
                 <div className="pt-4 border-t border-gray-100">
                   <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
                     <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">

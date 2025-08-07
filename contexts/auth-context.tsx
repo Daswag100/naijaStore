@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { getUserAddresses, type UserAddress } from '@/lib/database';
@@ -48,104 +48,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [sessionManager, setSessionManager] = useState<SessionManager | null>(null);
 
   useEffect(() => {
-    // Initialize SessionManager on client side
+    // Initialize SessionManager on client side immediately
     if (typeof window !== 'undefined') {
-      setSessionManager(SessionManager.getInstance());
+      const sm = SessionManager.getInstance();
+      setSessionManager(sm);
     }
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
-
-    // Get initial session
-    const initializeAuth = async () => {
-      try {
-        console.log('🔄 Initializing auth state...');
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error('❌ Error getting session:', error);
-          if (mounted) {
-            setState({
-              user: null,
-              isLoading: false,
-              isAuthenticated: false,
-            });
-          }
-          return;
-        }
-
-        console.log('📍 Session check result:', session?.user?.email || 'No session');
-
-        if (session?.user && mounted) {
-          console.log('✅ Found existing session, loading user profile...');
-          await loadUserProfile(session.user);
-        } else if (mounted) {
-          console.log('❌ No existing session found');
-          setState({
-            user: null,
-            isLoading: false,
-            isAuthenticated: false,
-          });
-          setRenderKey(prev => prev + 1);
-        }
-      } catch (error) {
-        console.error('❌ Error initializing auth:', error);
-        if (mounted) {
-          setState({
-            user: null,
-            isLoading: false,
-            isAuthenticated: false,
-          });
-        }
-      }
-    };
-
-    // Initialize immediately - no delay needed
-    initializeAuth();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state changed:', event, session?.user?.email || 'No session');
-      
-      if (!mounted) return;
-
-      if (event === 'SIGNED_OUT' || !session?.user) {
-        console.log('👤 User signed out or session lost');
-        // FIXED: Clear SessionManager on logout
-        if (sessionManager) {
-          sessionManager.clearSession();
-        }
-        setState({
-          user: null,
-          isLoading: false,
-          isAuthenticated: false,
-        });
-        setRenderKey(prev => prev + 1);
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        console.log('✅ User signed in or token refreshed');
-        if (session?.user) {
-          await loadUserProfile(session.user);
-        }
-      }
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, [sessionManager]);
-
-  const loadUserProfile = async (supabaseUser: SupabaseUser) => {
+  const loadUserProfile = useCallback(async (supabaseUser: SupabaseUser) => {
     console.log('✅ Loading user profile for:', supabaseUser.email);
     
     try {
-      // FIXED: Upgrade SessionManager to real user FIRST
-      if (sessionManager) {
-        console.log('🔄 Upgrading SessionManager to real user:', supabaseUser.id);
-        sessionManager.upgradeToRealUser(supabaseUser.id);
-      }
-
       // Create basic user first from Supabase auth data
       const basicUser: User = {
         id: supabaseUser.id,
@@ -155,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         addresses: [],
       };
 
-      // Set user immediately with basic data to prevent logout
+      // Set user immediately with basic data to prevent infinite loading
       console.log('⚡ Setting user immediately:', basicUser.email);
       setState({
         user: basicUser,
@@ -163,6 +76,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: true,
       });
       setRenderKey(prev => prev + 1);
+      
+      // Upgrade SessionManager after setting basic user
+      if (sessionManager) {
+        console.log('🔄 Upgrading SessionManager to real user:', supabaseUser.id);
+        sessionManager.upgradeToRealUser(supabaseUser.id);
+      }
 
       // Try to get enhanced profile data, but don't fail if it doesn't work
       try {
@@ -243,7 +162,107 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: false,
       });
     }
-  };
+  }, [sessionManager]);
+
+  useEffect(() => {
+    let mounted = true;
+    
+    // Get initial session with timeout to prevent infinite loading
+    const initializeAuth = async () => {
+      try {
+        console.log('🔄 Initializing auth state...');
+        
+        // Add timeout to prevent hanging
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Session check timeout')), 5000)
+        );
+        
+        const { data: { session }, error } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]) as any;
+        
+        if (error) {
+          console.error('❌ Error getting session:', error);
+          if (mounted) {
+            setState({
+              user: null,
+              isLoading: false,
+              isAuthenticated: false,
+            });
+          }
+          return;
+        }
+
+        console.log('📍 Session check result:', session?.user?.email || 'No session');
+
+        if (session?.user && mounted) {
+          console.log('✅ Found existing session, loading user profile...');
+          await loadUserProfile(session.user);
+        } else if (mounted) {
+          console.log('❌ No existing session found');
+          setState({
+            user: null,
+            isLoading: false,
+            isAuthenticated: false,
+          });
+          setRenderKey(prev => prev + 1);
+        }
+      } catch (error) {
+        console.error('❌ Error initializing auth:', error);
+        if (mounted) {
+          setState({
+            user: null,
+            isLoading: false,
+            isAuthenticated: false,
+          });
+          setRenderKey(prev => prev + 1);
+        }
+      }
+    };
+
+    // Add small delay to ensure DOM is ready but prevent infinite loading
+    const timeoutId = setTimeout(initializeAuth, 100);
+    
+    // Cleanup timeout
+    return () => {
+      clearTimeout(timeoutId);
+      mounted = false;
+    };
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 Auth state changed:', event, session?.user?.email || 'No session');
+      
+      if (!mounted) return;
+
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        console.log('👤 User signed out or session lost');
+        // FIXED: Clear SessionManager on logout
+        if (sessionManager) {
+          sessionManager.clearSession();
+        }
+        setState({
+          user: null,
+          isLoading: false,
+          isAuthenticated: false,
+        });
+        setRenderKey(prev => prev + 1);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        console.log('✅ User signed in or token refreshed');
+        if (session?.user) {
+          await loadUserProfile(session.user);
+        }
+      }
+    });
+
+    // Cleanup
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [sessionManager, loadUserProfile]);
 
   const refreshUser = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -275,7 +294,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       console.log('✅ Login successful for:', email, '- User ID:', data.user.id);
-      // The auth state change handler will update the state with user data
+      
+      // FIXED: Load user profile immediately instead of waiting for auth state change
+      await loadUserProfile(data.user);
       return true;
     } catch (error) {
       console.error('❌ Login error:', error);
@@ -327,7 +348,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, isLoading: true }));
       
-      // FIXED: Clear SessionManager first
+      // Clear SessionManager first
       if (sessionManager) {
         console.log('🔄 Clearing SessionManager on logout');
         sessionManager.clearSession();
@@ -340,7 +361,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       console.log('✅ Logout successful');
-      // The auth state change handler will update the state
+      
+      // Set state immediately after logout
+      setState({
+        user: null,
+        isLoading: false,
+        isAuthenticated: false,
+      });
+      setRenderKey(prev => prev + 1);
+      
+      // Redirect to sign in page after logout
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+      
     } catch (error) {
       console.error('Logout error:', error);
       // Force logout even if there's an error
@@ -352,6 +386,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading: false,
         isAuthenticated: false,
       });
+      setRenderKey(prev => prev + 1);
+      
+      // Force redirect even on error
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
     }
   };
 
