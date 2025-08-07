@@ -29,6 +29,7 @@ interface Product {
   category?: {
     id: string;
     name: string;
+    slug?: string;
   };
 }
 
@@ -36,6 +37,9 @@ interface Category {
   id: string;
   name: string;
   slug: string;
+  description?: string;
+  image_url?: string;
+  created_at?: string;
 }
 
 export default function ProductsPage() {
@@ -55,6 +59,13 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+    
+    // Check for category parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const categoryParam = urlParams.get('category');
+    if (categoryParam) {
+      setSelectedCategories([categoryParam]);
+    }
   }, []);
 
   const fetchProducts = async () => {
@@ -120,6 +131,7 @@ export default function ProductsPage() {
     
     const matchesCategory = selectedCategories.length === 0 || 
                            selectedCategories.includes(product.category_id) ||
+                           selectedCategories.includes(product.category?.slug || '') ||
                            selectedCategories.includes(product.category?.name || '');
     
     return matchesSearch && matchesPrice && matchesCategory;
@@ -313,17 +325,17 @@ export default function ProductsPage() {
                 {categories.map((category) => (
                   <div key={category.id} className="flex items-center space-x-2">
                     <Checkbox
-                      id={category.id}
-                      checked={selectedCategories.includes(category.id)}
+                      id={category.slug}
+                      checked={selectedCategories.includes(category.slug)}
                       onCheckedChange={(checked) => {
                         if (checked) {
-                          setSelectedCategories([...selectedCategories, category.id]);
+                          setSelectedCategories([...selectedCategories, category.slug]);
                         } else {
-                          setSelectedCategories(selectedCategories.filter(c => c !== category.id));
+                          setSelectedCategories(selectedCategories.filter(c => c !== category.slug));
                         }
                       }}
                     />
-                    <label htmlFor={category.id} className="text-sm">
+                    <label htmlFor={category.slug} className="text-sm">
                       {category.name}
                     </label>
                   </div>
@@ -336,9 +348,19 @@ export default function ProductsPage() {
         {/* Products Grid */}
         <div className="flex-1">
           <div className="mb-4 flex justify-between items-center">
-            <p className="text-gray-600">
-              Showing {sortedProducts.length} of {products.length} products
-            </p>
+            <div>
+              <p className="text-gray-600">
+                Showing {sortedProducts.length} of {products.length} products
+              </p>
+              {selectedCategories.length > 0 && (
+                <p className="text-sm text-green-600 mt-1">
+                  Filtered by: {selectedCategories.map(cat => {
+                    const category = categories.find(c => c.slug === cat);
+                    return category?.name || cat;
+                  }).join(', ')}
+                </p>
+              )}
+            </div>
             {products.length === 0 && !loading && (
               <Button onClick={fetchProducts} variant="outline" size="sm">
                 <Loader2 className="w-4 h-4 mr-2" />
@@ -366,6 +388,10 @@ export default function ProductsPage() {
                 setSearchQuery("");
                 setSelectedCategories([]);
                 setPriceRange([0, 2000000]);
+                // Update URL to remove category parameter
+                const url = new URL(window.location.href);
+                url.searchParams.delete('category');
+                window.history.replaceState({}, '', url.toString());
               }}>
                 Clear Filters
               </Button>

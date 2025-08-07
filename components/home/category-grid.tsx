@@ -1,53 +1,133 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
 
-const categories = [
+// Define category type for better type safety
+interface CategoryData {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  image_url?: string;
+  productCount?: number;
+}
+
+// Fallback static categories with real data based on audit
+const fallbackCategories = [
   {
     id: "electronics",
     name: "Electronics",
-    image: "https://images.pexels.com/photos/356056/pexels-photo-356056.jpeg?auto=compress&cs=tinysrgb&w=800",
-    count: "1,200+ items",
+    slug: "electronics",
+    image: "https://images.unsplash.com/photo-1498049794561-7780e7231661?w=500",
+    count: "5 items",
     color: "from-blue-500 to-purple-600"
   },
   {
-    id: "fashion",
+    id: "fashion", 
     name: "Fashion",
-    image: "https://images.pexels.com/photos/996329/pexels-photo-996329.jpeg?auto=compress&cs=tinysrgb&w=800",
-    count: "2,800+ items",
+    slug: "fashion",
+    image: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=500",
+    count: "12 items",
     color: "from-pink-500 to-rose-600"
   },
   {
-    id: "home",
-    name: "Home & Garden",
-    image: "https://images.pexels.com/photos/1080721/pexels-photo-1080721.jpeg?auto=compress&cs=tinysrgb&w=800",
-    count: "950+ items",
+    id: "home-living",
+    name: "Home & Living",
+    slug: "home-living", 
+    image: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=500",
+    count: "1 item",
     color: "from-green-500 to-emerald-600"
   },
   {
-    id: "sports",
-    name: "Sports & Fitness",
-    image: "https://images.pexels.com/photos/416717/pexels-photo-416717.jpeg?auto=compress&cs=tinysrgb&w=800",
-    count: "650+ items",
-    color: "from-orange-500 to-red-600"
-  },
-  {
     id: "beauty",
-    name: "Beauty & Health",
-    image: "https://images.pexels.com/photos/3373736/pexels-photo-3373736.jpeg?auto=compress&cs=tinysrgb&w=800",
-    count: "1,100+ items",
+    name: "Beauty",
+    slug: "beauty",
+    image: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=500",
+    count: "2 items",
     color: "from-purple-500 to-pink-600"
-  },
-  {
-    id: "automotive",
-    name: "Automotive",
-    image: "https://images.pexels.com/photos/164634/pexels-photo-164634.jpeg?auto=compress&cs=tinysrgb&w=800",
-    count: "420+ items",
-    color: "from-gray-600 to-slate-700"
   },
 ];
 
 export function CategoryGrid() {
+  const [categories, setCategories] = useState<any[]>(fallbackCategories);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchCategoriesWithCounts();
+  }, []);
+
+  const fetchCategoriesWithCounts = async () => {
+    try {
+      // Fetch categories and products in parallel
+      const [categoriesRes, productsRes] = await Promise.all([
+        fetch('/api/categories'),
+        fetch('/api/products')
+      ]);
+
+      if (categoriesRes.ok && productsRes.ok) {
+        const categoriesData = await categoriesRes.json();
+        const productsData = await productsRes.json();
+        
+        // Count products per category
+        const categoryCountMap = (productsData.products || []).reduce((acc: any, product: any) => {
+          const categoryId = product.category_id;
+          acc[categoryId] = (acc[categoryId] || 0) + 1;
+          return acc;
+        }, {});
+
+        // Map categories with counts
+        const categoriesWithCounts = (categoriesData.categories || []).map((cat: CategoryData) => {
+          const productCount = categoryCountMap[cat.id] || 0;
+          const fallback = fallbackCategories.find(f => f.slug === cat.slug);
+          
+          return {
+            id: cat.slug,
+            name: cat.name,
+            slug: cat.slug,
+            image: cat.image_url || fallback?.image || 'https://via.placeholder.com/400x400?text=Category',
+            count: `${productCount} item${productCount !== 1 ? 's' : ''}`,
+            color: fallback?.color || 'from-gray-500 to-slate-600'
+          };
+        }).filter((cat: any) => {
+          // Only show categories that have products
+          const productCount = categoryCountMap[categoriesData.categories?.find((c: CategoryData) => c.slug === cat.slug)?.id] || 0;
+          return productCount > 0;
+        });
+
+        if (categoriesWithCounts.length > 0) {
+          setCategories(categoriesWithCounts);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      // Keep fallback categories on error
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <section className="py-16">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            Shop by Category
+          </h2>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Explore our wide range of product categories and find exactly what you need
+          </p>
+        </div>
+        <div className="flex justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="py-16">
       <div className="text-center mb-12">
@@ -59,9 +139,10 @@ export function CategoryGrid() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 md:gap-6">
+      {/* Clean 2x2 Grid for 4 categories */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 max-w-4xl mx-auto">
         {categories.map((category) => (
-          <Link key={category.id} href={`/categories/${category.id}`}>
+          <Link key={category.id} href={`/products?category=${category.slug}`}>
             <Card className="group hover:shadow-lg transition-all duration-300 border-0 shadow-md overflow-hidden">
               <div className="relative aspect-square">
                 <Image
@@ -69,6 +150,10 @@ export function CategoryGrid() {
                   alt={category.name}
                   fill
                   className="object-cover group-hover:scale-110 transition-transform duration-300"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src = 'https://via.placeholder.com/400x400?text=Category';
+                  }}
                 />
                 <div className={`absolute inset-0 bg-gradient-to-t ${category.color} opacity-60 group-hover:opacity-50 transition-opacity`} />
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center p-4">
