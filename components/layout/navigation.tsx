@@ -44,19 +44,36 @@ export function Navigation() {
     });
   }, [isAuthenticated, isLoading, user]);
 
-  // Handle search functionality
+  // Handle search functionality - WITH ERROR HANDLING
   const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery("");
-      setSearchFocused(false);
+    try {
+      e?.preventDefault();
+      const query = (searchQuery || '').trim();
+      if (query && router) {
+        router.push(`/products?search=${encodeURIComponent(query)}`);
+        setSearchQuery("");
+        setSearchFocused(false);
+      }
+    } catch (error) {
+      console.error('Error in search navigation:', error);
+      // Fallback - try direct navigation
+      try {
+        if (typeof window !== 'undefined' && searchQuery?.trim()) {
+          window.location.href = `/products?search=${encodeURIComponent(searchQuery.trim())}`;
+        }
+      } catch (fallbackError) {
+        console.error('Fallback navigation failed:', fallbackError);
+      }
     }
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSearch(e as any);
+    try {
+      if (e?.key === 'Enter') {
+        handleSearch(e as any);
+      }
+    } catch (error) {
+      console.error('Error in search key handler:', error);
     }
   };
 

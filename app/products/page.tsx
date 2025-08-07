@@ -58,24 +58,42 @@ export default function ProductsPage() {
   const { toast } = useToast();
 
   useEffect(() => {
+    // Fetch data with error handling
     fetchProducts();
     fetchCategories();
     
-    // Check for URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
+    // Check for URL parameters - WITH ERROR HANDLING - CLIENT SIDE ONLY
+    const handleUrlParams = () => {
+      try {
+        if (typeof window !== 'undefined' && window.location) {
+          const urlParams = new URLSearchParams(window.location.search);
+          
+          // Handle category parameter
+          const categoryParam = urlParams.get('category');
+          if (categoryParam && typeof categoryParam === 'string') {
+            setSelectedCategories([categoryParam.trim()]);
+          }
+          
+          // Handle search parameter
+          const searchParam = urlParams.get('search');
+          if (searchParam && typeof searchParam === 'string') {
+            const cleanSearch = searchParam.trim();
+            if (cleanSearch) {
+              setSearchQuery(cleanSearch);
+              console.log('🔍 Search parameter found:', cleanSearch);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error reading URL parameters:', error);
+        // Continue without URL parameters
+      }
+    };
+
+    // Delay URL parameter reading to ensure client-side execution
+    const timeoutId = setTimeout(handleUrlParams, 0);
     
-    // Handle category parameter
-    const categoryParam = urlParams.get('category');
-    if (categoryParam) {
-      setSelectedCategories([categoryParam]);
-    }
-    
-    // Handle search parameter
-    const searchParam = urlParams.get('search');
-    if (searchParam) {
-      setSearchQuery(searchParam.trim());
-      console.log('🔍 Search parameter found:', searchParam);
-    }
+    return () => clearTimeout(timeoutId);
   }, []);
 
   const fetchProducts = async () => {
@@ -129,28 +147,50 @@ export default function ProductsPage() {
     }
   };
 
-  // Filter products based on current criteria
-  const filteredProducts = products.filter(product => {
-    // Only show active products
-    if (product.status !== 'active') return false;
-    
-    // Improved search matching - handle empty search
-    const matchesSearch = searchQuery.trim() === '' || 
-                         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         product.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesPrice = product.price >= priceRange[0] && product.price <= priceRange[1];
-    
-    const matchesCategory = selectedCategories.length === 0 || 
-                           selectedCategories.includes(product.category_id) ||
-                           selectedCategories.includes(product.category?.slug || '') ||
-                           selectedCategories.includes(product.category?.name || '');
-    
-    return matchesSearch && matchesPrice && matchesCategory;
-  });
+  // Filter products based on current criteria - WITH ERROR HANDLING
+  const filteredProducts = (() => {
+    try {
+      if (!Array.isArray(products)) {
+        console.warn('Products is not an array:', products);
+        return [];
+      }
 
-  // Handle search with loading state
+      return products.filter(product => {
+        try {
+          // Safety checks
+          if (!product || typeof product !== 'object') return false;
+          if (!product.status || product.status !== 'active') return false;
+          
+          // Improved search matching - handle empty search with null checks
+          const searchTerm = (searchQuery || '').trim().toLowerCase();
+          const matchesSearch = !searchTerm || 
+                               (product.name && product.name.toLowerCase().includes(searchTerm)) ||
+                               (product.description && product.description.toLowerCase().includes(searchTerm)) ||
+                               (product.sku && product.sku.toLowerCase().includes(searchTerm));
+          
+          // Safe price matching
+          const productPrice = Number(product.price) || 0;
+          const matchesPrice = productPrice >= (priceRange[0] || 0) && productPrice <= (priceRange[1] || 2000000);
+          
+          // Safe category matching
+          const matchesCategory = !selectedCategories || selectedCategories.length === 0 || 
+                                 selectedCategories.includes(product.category_id) ||
+                                 selectedCategories.includes(product.category?.slug || '') ||
+                                 selectedCategories.includes(product.category?.name || '');
+          
+          return matchesSearch && matchesPrice && matchesCategory;
+        } catch (error) {
+          console.error('Error filtering individual product:', error, product);
+          return false;
+        }
+      });
+    } catch (error) {
+      console.error('Error in product filtering:', error);
+      return [];
+    }
+  })();
+
+  // Handle search with loading state - FIXED: Removed circular dependency
   useEffect(() => {
     if (searchQuery.trim()) {
       setSearchLoading(true);
@@ -158,8 +198,6 @@ export default function ProductsPage() {
       const searchTimeout = setTimeout(() => {
         console.log('🔍 Search Query:', searchQuery);
         console.log('📦 Total Products:', products.length);
-        console.log('🎯 Filtered Results:', filteredProducts.length);
-        console.log('📋 Sample Products:', products.slice(0, 3).map(p => ({ name: p.name, id: p.id })));
         setSearchLoading(false);
       }, 300);
 
@@ -170,21 +208,40 @@ export default function ProductsPage() {
     } else {
       setSearchLoading(false);
     }
-  }, [searchQuery, filteredProducts.length, products.length]);
+  }, [searchQuery, products.length]);
 
-  // Sort products
-  const sortedProducts = [...filteredProducts].sort((a, b) => {
-    switch (sortBy) {
-      case "price-low":
-        return a.price - b.price;
-      case "price-high":
-        return b.price - a.price;
-      case "newest":
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      default:
-        return 0; // featured - keep original order
+  // Sort products - WITH ERROR HANDLING
+  const sortedProducts = (() => {
+    try {
+      if (!Array.isArray(filteredProducts)) {
+        console.warn('FilteredProducts is not an array:', filteredProducts);
+        return [];
+      }
+
+      return [...filteredProducts].sort((a, b) => {
+        try {
+          switch (sortBy) {
+            case "price-low":
+              return (Number(a.price) || 0) - (Number(b.price) || 0);
+            case "price-high":
+              return (Number(b.price) || 0) - (Number(a.price) || 0);
+            case "newest":
+              const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+              const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+              return dateB - dateA;
+            default:
+              return 0; // featured - keep original order
+          }
+        } catch (error) {
+          console.error('Error in product sorting:', error);
+          return 0;
+        }
+      });
+    } catch (error) {
+      console.error('Error creating sorted products:', error);
+      return filteredProducts || [];
     }
-  });
+  })();
 
   const handleAddToCart = (product: Product) => {
     if (product.inventory_quantity <= 0) {
