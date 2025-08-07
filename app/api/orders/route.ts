@@ -88,7 +88,8 @@ export async function POST(request: NextRequest) {
 
     console.log('🆔 Using authenticated user:', userId);
 
-    // Get user's cart items
+    // Get user's cart items with detailed logging
+    console.log('🛒 Fetching cart items for user:', userId);
     const { data: cartItems, error: cartError } = await supabaseAdmin
       .from('cart_items')
       .select(`
@@ -99,26 +100,45 @@ export async function POST(request: NextRequest) {
     
     if (cartError) {
       console.error('❌ Cart fetch error:', cartError);
-      throw cartError;
+      return NextResponse.json({
+        error: 'Failed to fetch cart items',
+        details: cartError.message
+      }, { status: 500 });
     }
 
-    // If no cart items, create a simple order from payment data
-    let orderItems;
+    console.log('🔍 Raw cart items from database:', cartItems?.length || 0, 'items');
+    console.log('🔍 Cart items details:', cartItems?.map(item => ({
+      id: item.id,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      has_product: !!item.product,
+      product_name: item.product?.name || 'NO PRODUCT DATA'
+    })));
+
+    // Ensure we have cart items to create an order
     if (!cartItems || cartItems.length === 0) {
-      console.log('⚠️ No cart items found, creating with payment data');
-      // Generate a valid UUID for mock product
-      const mockProductId = '00000000-0000-4000-8000-000000000000';
-      orderItems = [{
-        product_id: mockProductId,
-        quantity: 1,
-        product: {
-          name: 'Payment Product',
-          price: body.total || body.subtotal || 1000
-        }
-      }];
-    } else {
-      orderItems = cartItems;
+      console.error('❌ No cart items found for order creation');
+      return NextResponse.json({
+        error: 'No cart items found. Please add items to cart before creating an order.'
+      }, { status: 400 });
     }
+
+    // Validate cart items have associated products
+    const invalidItems = cartItems.filter(item => !item.product || !item.product_id);
+    if (invalidItems.length > 0) {
+      console.error('❌ Cart items with missing product data:', invalidItems.map(item => ({
+        id: item.id,
+        product_id: item.product_id,
+        has_product: !!item.product
+      })));
+      
+      return NextResponse.json({
+        error: 'Some items in your cart are no longer available. Please refresh your cart and try again.',
+        invalid_items: invalidItems.length
+      }, { status: 400 });
+    }
+
+    const orderItems = cartItems;
 
     console.log('🛒 Found/Created cart items:', orderItems.length);
 
@@ -179,19 +199,34 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Order created:', newOrder.id);
 
-    // 🔽 UPDATED: Create order items with image URLs and product slugs
-    const orderItemsToInsert = orderItems.map(item => ({
-      order_id: newOrder.id,
-      product_id: item.product_id || '00000000-0000-4000-8000-000000000000',
-      product_name: item.product?.name || 'Payment Product',
-      quantity: item.quantity || 1,
-      price: item.product?.price || (body.total || 1000),
-      image_url: item.product?.image_url || item.product?.images?.[0] || 'https://via.placeholder.com/300x300?text=Payment+Product', // 🔽 Updated placeholder
-      product_slug: item.product?.slug || null, // 🔽 Added this for linking back to product
-    }));
+    // Create order items with real product data
+    const orderItemsToInsert = orderItems.map(item => {
+      // Ensure we have a valid product_id
+      if (!item.product_id) {
+        throw new Error(`Missing product_id for cart item: ${item.product?.name || 'Unknown'}`);
+      }
+      
+      // Ensure we have product data
+      if (!item.product) {
+        throw new Error(`Missing product data for product_id: ${item.product_id}`);
+      }
 
-    console.log('📸 Order items with images:', orderItemsToInsert.map(item => ({
+      return {
+        order_id: newOrder.id,
+        product_id: item.product_id,
+        product_name: item.product.name,
+        quantity: item.quantity,
+        price: item.product.price,
+        image_url: item.product.image_url || item.product.images?.[0] || '/placeholder-product.jpg',
+        product_slug: item.product.slug || null,
+      };
+    });
+
+    console.log('📦 Order items to create:', orderItemsToInsert.map(item => ({
+      product_id: item.product_id,
       name: item.product_name,
+      quantity: item.quantity,
+      price: item.price,
       image: item.image_url,
       slug: item.product_slug
     })));
@@ -201,10 +236,18 @@ export async function POST(request: NextRequest) {
       .insert(orderItemsToInsert);
 
     if (itemsError) {
-      console.error('❌ Order items error:', itemsError);
+      console.error('❌ Order items creation failed:', itemsError);
+      console.error('📋 Failed order items data:', orderItemsToInsert);
+      
       // Try to delete the order if items failed
       await supabaseAdmin.from('orders').delete().eq('id', newOrder.id);
-      throw itemsError;
+      
+      // Return more specific error message
+      return NextResponse.json({
+        error: 'Failed to create order items',
+        details: itemsError.message,
+        hint: itemsError.code === '23503' ? 'One or more products in your cart no longer exist. Please refresh your cart and try again.' : itemsError.message
+      }, { status: 400 });
     }
 
     console.log('✅ Order items created:', orderItemsToInsert.length);
@@ -239,8 +282,8 @@ export async function POST(request: NextRequest) {
           product_name: item.product_name,
           quantity: item.quantity,
           price: item.price,
-          image_url: item.image_url, // 🔽 Include in response
-          product_slug: item.product_slug // 🔽 Include in response
+          image_url: item.image_url,
+          product_slug: item.product_slug
         })),
         shipping_address: shippingAddress,
       },
