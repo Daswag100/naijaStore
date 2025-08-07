@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatNaira, formatDate } from '@/lib/utils';
 import { SessionManager } from '@/lib/session-manager';
 import { useAuth } from '@/contexts/auth-context';
+import { useSearchParams } from 'next/navigation';
 
 interface OrderItem {
   id: string;
@@ -31,20 +32,30 @@ interface Order {
 
 export default function OrderHistoryPage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionManager, setSessionManager] = useState<SessionManager | null>(null);
+  
+  // Check if we came from successful payment
+  const isFromPayment = searchParams.get('success') === 'true';
 
   // Initialize session manager
   useEffect(() => {
     setSessionManager(SessionManager.getInstance());
   }, []);
 
-  // Load orders
+  // Load orders - prioritize sessionManager over user context for speed
   useEffect(() => {
-    if (sessionManager && user) {
-      loadOrders();
+    if (sessionManager) {
+      // Check if we have authentication
+      if (sessionManager.isAuthenticated() && sessionManager.getRealUserId()) {
+        loadOrders();
+      } else if (user) {
+        // Fallback to user context if sessionManager not authenticated
+        loadOrders();
+      }
     }
   }, [sessionManager, user]);
 
@@ -167,6 +178,16 @@ export default function OrderHistoryPage() {
         </Link>
         <h1 className="text-3xl font-bold text-gray-900">Order History</h1>
         <p className="text-gray-600">Track and manage your orders</p>
+        
+        {/* Success message from payment */}
+        {isFromPayment && (
+          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center">
+              <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+              <span className="text-green-800 font-medium">Payment successful! Your order has been placed.</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {error && (

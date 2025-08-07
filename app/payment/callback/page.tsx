@@ -35,15 +35,31 @@ export default function PaymentCallbackPage() {
   };
 
   useEffect(() => {
-    // Wait for session manager and user to be available
-    if (!sessionManager || !user) {
-      addDebug(`Waiting for auth... SessionManager: ${!!sessionManager}, User: ${!!user}`);
+    // Only wait for sessionManager to be available
+    if (!sessionManager) {
+      addDebug(`Waiting for SessionManager... SessionManager: ${!!sessionManager}`);
       return;
     }
 
     // Prevent multiple executions
     if (processedRef.current) {
       addDebug('Already processed, skipping...');
+      return;
+    }
+
+    // Check if we have authentication immediately
+    const hasAuth = sessionManager.isAuthenticated() && sessionManager.getRealUserId();
+    const currentUser = sessionManager.getCurrentUser();
+    
+    addDebug(`Auth check: authenticated=${hasAuth}, userId=${currentUser.userId}, user=${!!user}`);
+
+    // If we don't have user context but have session authentication, proceed anyway
+    if (!user && hasAuth) {
+      addDebug('⚡ Using sessionManager auth without waiting for user context');
+    } else if (!user && !hasAuth) {
+      addDebug('❌ No authentication found, cannot process payment');
+      setStatus('error');
+      setMessage('Authentication required. Please log in and try again.');
       return;
     }
 
@@ -101,6 +117,16 @@ export default function PaymentCallbackPage() {
         addDebug('Payment verified, creating order...');
         setMessage('Creating your order...');
 
+        // Get user info from sessionManager if user context not available
+        const currentUser = sessionManager!.getCurrentUser();
+        const effectiveUserData = user || {
+          name: 'Customer',
+          email: 'customer@example.com',
+          phone: ''
+        };
+
+        addDebug(`Using user data: ${effectiveUserData.email}, Auth: ${currentUser.isAuthenticated}`);
+
         // Create order with authentication headers
         const orderResponse = await fetch('/api/orders', {
           method: 'POST',
@@ -114,9 +140,9 @@ export default function PaymentCallbackPage() {
             shippingCost: 0,
             total: verifyData.data.amount || 0,
             shippingAddress: {
-              name: user.name || 'Customer',
-              email: user.email || 'customer@example.com',
-              phone: user.phone || '',
+              name: effectiveUserData.name || 'Customer',
+              email: effectiveUserData.email || 'customer@example.com', 
+              phone: effectiveUserData.phone || '',
               address_line1: 'Default Address',
               city: 'Lagos',
               state: 'Lagos',
@@ -149,11 +175,13 @@ export default function PaymentCallbackPage() {
           description: `Your order ${orderData.order.order_number} has been placed successfully.`,
         });
 
-        // Redirect after a delay
-        addDebug('Success! Redirecting...');
-        setTimeout(() => {
-          router.push(`/orders/${orderData.order.id}?success=true`);
-        }, 2000);
+        // Redirect immediately - with fallback to order history
+        addDebug('Success! Redirecting immediately...');
+        const orderUrl = orderData.order?.id 
+          ? `/orders/${orderData.order.id}?success=true`
+          : '/account/orders?success=true';
+        addDebug(`Redirecting to: ${orderUrl}`);
+        router.push(orderUrl);
 
       } catch (error) {
         console.error('❌ Payment processing error:', error);
@@ -170,13 +198,31 @@ export default function PaymentCallbackPage() {
       }
     };
 
-    // Add a small delay to ensure the component is fully mounted
+    // Process payment immediately with timeout protection
     const timer = setTimeout(() => {
       processPayment();
-    }, 500);
+    }, 100); // Reduced delay
 
-    return () => clearTimeout(timer);
-  }, [searchParams, router, toast, clearCart, sessionManager, user]);
+    // Add timeout mechanism to prevent infinite waiting
+    const authTimeout = setTimeout(() => {
+      if (!processedRef.current) {
+        addDebug('⏰ Authentication timeout - proceeding with limited data');
+        processedRef.current = true;
+        
+        if (sessionManager?.isAuthenticated()) {
+          processPayment();
+        } else {
+          setStatus('error');
+          setMessage('Authentication timeout. Please try logging in again.');
+        }
+      }
+    }, 10000); // 10 second timeout
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(authTimeout);
+    };
+  }, [searchParams, router, toast, clearCart, sessionManager]);
 
   return (
     <div className="container mx-auto px-4 py-16">
@@ -209,14 +255,23 @@ export default function PaymentCallbackPage() {
                 <p className="text-sm text-gray-500 mb-4">
                   Redirecting you to your order details...
                 </p>
-                {orderId && (
+                <div className="space-y-2">
+                  {orderId && (
+                    <Button 
+                      onClick={() => router.push(`/orders/${orderId}`)}
+                      className="w-full bg-green-600 hover:bg-green-700"
+                    >
+                      View Order Details
+                    </Button>
+                  )}
                   <Button 
-                    onClick={() => router.push(`/orders/${orderId}`)}
-                    className="bg-green-600 hover:bg-green-700"
+                    onClick={() => router.push('/account/orders')}
+                    variant="outline"
+                    className="w-full"
                   >
-                    View Order Details
+                    View All Orders
                   </Button>
-                )}
+                </div>
                 
                 {/* Show success debug info */}
                 <div className="mt-4 p-4 bg-green-50 rounded text-left text-xs max-h-32 overflow-y-auto">
