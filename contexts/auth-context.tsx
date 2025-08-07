@@ -309,7 +309,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (authData.user && !authData.session) {
         // User created but needs email confirmation
         setState(prev => ({ ...prev, isLoading: false }));
-        alert('Please check your email to confirm your account before logging in.');
+        // Note: This should be handled by the registration page with toast
         return true;
       }
 

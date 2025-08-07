@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatNaira, formatDate } from '@/lib/utils';
 import { SessionManager } from '@/lib/session-manager';
+import { useToast } from '@/hooks/use-toast';
 
 interface OrderItem {
   id: string;
@@ -40,6 +41,7 @@ interface Order {
 function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const orderId = params.id as string;
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,7 +117,11 @@ function OrderDetailPage() {
   const handleBuyAgain = async (item: OrderItem) => {
     if (!sessionManager) {
       console.log('❌ SessionManager not ready, cannot add to cart');
-      alert('Please wait a moment and try again.');
+      toast({
+        title: "Please wait",
+        description: "Please wait a moment and try again.",
+        variant: "default"
+      });
       return;
     }
 
@@ -134,15 +140,27 @@ function OrderDetailPage() {
 
       if (response.ok) {
         console.log('✅ Added to cart successfully');
-        // Navigate to cart or show success message
+        toast({
+          title: "Added to Cart",
+          description: `${item.product_name} has been added to your cart.`,
+        });
+        // Navigate to cart
         router.push('/cart');
       } else {
         console.error('❌ Failed to add to cart');
-        alert('Failed to add item to cart. Please try again.');
+        toast({
+          title: "Error",
+          description: "Failed to add item to cart. Please try again.",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('❌ Error adding to cart:', error);
-      alert('Failed to add item to cart. Please try again.');
+      toast({
+        title: "Error",
+        description: "Failed to add item to cart. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -367,7 +385,10 @@ function OrderDetailPage() {
                               <Button 
                                 variant="outline" 
                                 size="sm"
-                                onClick={() => alert('Return/replace functionality coming soon!')}
+                                onClick={() => toast({
+                                  title: "Coming Soon",
+                                  description: "Return/replace functionality coming soon!",
+                                })}
                                 className="hover:bg-red-50 hover:text-red-600 transition-colors"
                               >
                                 Return or replace
