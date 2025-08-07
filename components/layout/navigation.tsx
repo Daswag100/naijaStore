@@ -258,13 +258,17 @@ export function Navigation() {
           </div>
         </div>
 
-        {/* Mobile Menu - Optimized for Touch */}
+        {/* Mobile Menu - Scrollable & Touch Optimized */}
         <div 
-          className={`lg:hidden overflow-hidden transition-all duration-300 ease-in-out border-t border-gray-100 bg-white ${
-            isOpen ? 'max-h-screen opacity-100 shadow-lg' : 'max-h-0 opacity-0'
+          className={`lg:hidden transition-all duration-300 ease-in-out border-t border-gray-100 bg-white ${
+            isOpen ? 'max-h-[80vh] opacity-100 shadow-lg overflow-y-auto' : 'max-h-0 opacity-0 overflow-hidden'
           }`}
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            scrollBehavior: 'smooth'
+          }}
         >
-          <div className={`px-4 space-y-5 transition-all duration-300 ${isOpen ? 'py-4' : 'py-0'}`}>
+          <div className={`px-4 space-y-5 transition-all duration-300 ${isOpen ? 'py-6 pb-8' : 'py-0'}`}>
             
             {/* 1. USER PROFILE SECTION - TOP PRIORITY */}
             {!isLoading && isAuthenticated && user && (

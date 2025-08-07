@@ -139,7 +139,7 @@ export default function OrderHistoryPage() {
       default:
         return 'bg-gray-100 text-gray-800';
     }
-  };
+  }; 
 
   // Redirect to login if not authenticated
   if (!user) {

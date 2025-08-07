@@ -46,6 +46,7 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("featured");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -60,11 +61,20 @@ export default function ProductsPage() {
     fetchProducts();
     fetchCategories();
     
-    // Check for category parameter in URL
+    // Check for URL parameters
     const urlParams = new URLSearchParams(window.location.search);
+    
+    // Handle category parameter
     const categoryParam = urlParams.get('category');
     if (categoryParam) {
       setSelectedCategories([categoryParam]);
+    }
+    
+    // Handle search parameter
+    const searchParam = urlParams.get('search');
+    if (searchParam) {
+      setSearchQuery(searchParam.trim());
+      console.log('🔍 Search parameter found:', searchParam);
     }
   }, []);
 
@@ -124,8 +134,11 @@ export default function ProductsPage() {
     // Only show active products
     if (product.status !== 'active') return false;
     
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         product.description.toLowerCase().includes(searchQuery.toLowerCase());
+    // Improved search matching - handle empty search
+    const matchesSearch = searchQuery.trim() === '' || 
+                         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         product.sku.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesPrice = product.price >= priceRange[0] && product.price <= priceRange[1];
     
@@ -136,6 +149,28 @@ export default function ProductsPage() {
     
     return matchesSearch && matchesPrice && matchesCategory;
   });
+
+  // Handle search with loading state
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      setSearchLoading(true);
+      // Debounce search to avoid excessive filtering
+      const searchTimeout = setTimeout(() => {
+        console.log('🔍 Search Query:', searchQuery);
+        console.log('📦 Total Products:', products.length);
+        console.log('🎯 Filtered Results:', filteredProducts.length);
+        console.log('📋 Sample Products:', products.slice(0, 3).map(p => ({ name: p.name, id: p.id })));
+        setSearchLoading(false);
+      }, 300);
+
+      return () => {
+        clearTimeout(searchTimeout);
+        setSearchLoading(false);
+      };
+    } else {
+      setSearchLoading(false);
+    }
+  }, [searchQuery, filteredProducts.length, products.length]);
 
   // Sort products
   const sortedProducts = [...filteredProducts].sort((a, b) => {
@@ -252,6 +287,11 @@ export default function ProductsPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
             />
+            {searchLoading && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <Loader2 className="w-4 h-4 animate-spin text-green-600" />
+              </div>
+            )}
           </div>
         </div>
         
@@ -350,8 +390,20 @@ export default function ProductsPage() {
           <div className="mb-4 flex justify-between items-center">
             <div>
               <p className="text-gray-600">
-                Showing {sortedProducts.length} of {products.length} products
+                {searchLoading ? (
+                  <span className="flex items-center">
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Searching...
+                  </span>
+                ) : (
+                  <>Showing {sortedProducts.length} of {products.length} products</>
+                )}
               </p>
+              {searchQuery.trim() && !searchLoading && (
+                <p className="text-sm text-blue-600 mt-1">
+                  Search results for: &quot;<strong>{searchQuery}</strong>&quot;
+                </p>
+              )}
               {selectedCategories.length > 0 && (
                 <p className="text-sm text-green-600 mt-1">
                   Filtered by: {selectedCategories.map(cat => {
@@ -383,18 +435,44 @@ export default function ProductsPage() {
             </div>
           ) : sortedProducts.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-500 mb-4">No products found matching your criteria.</p>
-              <Button onClick={() => {
-                setSearchQuery("");
-                setSelectedCategories([]);
-                setPriceRange([0, 2000000]);
-                // Update URL to remove category parameter
-                const url = new URL(window.location.href);
-                url.searchParams.delete('category');
-                window.history.replaceState({}, '', url.toString());
-              }}>
-                Clear Filters
-              </Button>
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Search className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
+              {searchQuery.trim() ? (
+                <p className="text-gray-500 mb-4">
+                  No products match &quot;<strong>{searchQuery}</strong>&quot;. Try adjusting your search or filters.
+                </p>
+              ) : (
+                <p className="text-gray-500 mb-4">
+                  No products found matching your current filters.
+                </p>
+              )}
+              <div className="space-x-2">
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSelectedCategories([]);
+                    setPriceRange([0, 2000000]);
+                    // Update URL to remove category parameter
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('category');
+                    url.searchParams.delete('search');
+                    window.history.replaceState({}, '', url.toString());
+                  }}
+                >
+                  Clear All Filters
+                </Button>
+                {searchQuery.trim() && (
+                  <Button 
+                    variant="ghost"
+                    onClick={() => setSearchQuery("")}
+                  >
+                    Clear Search
+                  </Button>
+                )}
+              </div>
             </div>
           ) : (
             <div className={viewMode === "grid" 
