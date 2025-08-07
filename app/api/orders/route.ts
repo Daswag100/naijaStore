@@ -106,11 +106,13 @@ export async function POST(request: NextRequest) {
     let orderItems;
     if (!cartItems || cartItems.length === 0) {
       console.log('⚠️ No cart items found, creating with payment data');
+      // Generate a valid UUID for mock product
+      const mockProductId = '00000000-0000-4000-8000-000000000000';
       orderItems = [{
-        product_id: 'mock-product',
+        product_id: mockProductId,
         quantity: 1,
         product: {
-          name: 'Test Product',
+          name: 'Payment Product',
           price: body.total || body.subtotal || 1000
         }
       }];
@@ -180,11 +182,11 @@ export async function POST(request: NextRequest) {
     // 🔽 UPDATED: Create order items with image URLs and product slugs
     const orderItemsToInsert = orderItems.map(item => ({
       order_id: newOrder.id,
-      product_id: item.product_id || 'mock-product',
-      product_name: item.product?.name || 'Test Product',
+      product_id: item.product_id || '00000000-0000-4000-8000-000000000000',
+      product_name: item.product?.name || 'Payment Product',
       quantity: item.quantity || 1,
       price: item.product?.price || (body.total || 1000),
-      image_url: item.product?.image_url || item.product?.images?.[0] || 'https://via.placeholder.com/300x300?text=No+Image', // 🔽 Added this
+      image_url: item.product?.image_url || item.product?.images?.[0] || 'https://via.placeholder.com/300x300?text=Payment+Product', // 🔽 Updated placeholder
       product_slug: item.product?.slug || null, // 🔽 Added this for linking back to product
     }));
 

@@ -114,18 +114,62 @@ export default function PaymentCallbackPage() {
           throw new Error(`Payment verification failed: ${verifyData.error || 'Unknown error'}`);
         }
 
-        addDebug('Payment verified, creating order...');
-        setMessage('Creating your order...');
+        addDebug('✅ Payment verified successfully!');
+        setMessage('Payment confirmed! Creating your order...');
 
-        // Get user info from sessionManager if user context not available
+        // Get real user info from API if user context not available
+        let effectiveUserData = user;
+        
+        if (!user && sessionManager!.isAuthenticated()) {
+          addDebug('🔄 Fetching real user data from API...');
+          try {
+            const userResponse = await fetch('/api/profile', {
+              method: 'GET',
+              headers: sessionManager!.getApiHeaders(),
+            });
+            
+            if (userResponse.ok) {
+              const userData = await userResponse.json();
+              effectiveUserData = {
+                id: userData.user?.id || '',
+                name: userData.user?.name || 'Customer',
+                email: userData.user?.email || 'customer@example.com',
+                phone: userData.user?.phone || '',
+                addresses: []
+              };
+              addDebug(`✅ Fetched real user: ${effectiveUserData.email}`);
+            } else {
+              addDebug('❌ Failed to fetch user data, using fallback');
+              effectiveUserData = { 
+                id: '', 
+                name: 'Customer', 
+                email: 'customer@example.com', 
+                phone: '', 
+                addresses: [] 
+              };
+            }
+          } catch (error) {
+            addDebug(`❌ Error fetching user: ${error}`);
+            effectiveUserData = { 
+              id: '', 
+              name: 'Customer', 
+              email: 'customer@example.com', 
+              phone: '', 
+              addresses: [] 
+            };
+          }
+        } else if (!user) {
+          effectiveUserData = { 
+            id: '', 
+            name: 'Customer', 
+            email: 'customer@example.com', 
+            phone: '', 
+            addresses: [] 
+          };
+        }
+
         const currentUser = sessionManager!.getCurrentUser();
-        const effectiveUserData = user || {
-          name: 'Customer',
-          email: 'customer@example.com',
-          phone: ''
-        };
-
-        addDebug(`Using user data: ${effectiveUserData.email}, Auth: ${currentUser.isAuthenticated}`);
+        addDebug(`Using user data: ${effectiveUserData?.email}, Auth: ${currentUser.isAuthenticated}`);
 
         // Create order with authentication headers
         const orderResponse = await fetch('/api/orders', {
@@ -140,9 +184,9 @@ export default function PaymentCallbackPage() {
             shippingCost: 0,
             total: verifyData.data.amount || 0,
             shippingAddress: {
-              name: effectiveUserData.name || 'Customer',
-              email: effectiveUserData.email || 'customer@example.com', 
-              phone: effectiveUserData.phone || '',
+              name: effectiveUserData?.name || 'Customer',
+              email: effectiveUserData?.email || 'customer@example.com', 
+              phone: effectiveUserData?.phone || '',
               address_line1: 'Default Address',
               city: 'Lagos',
               state: 'Lagos',
@@ -166,8 +210,9 @@ export default function PaymentCallbackPage() {
         addDebug('Clearing cart...');
         clearCart();
 
+        // Show immediate success
         setStatus('success');
-        setMessage(`Order ${orderData.order.order_number} created successfully!`);
+        setMessage(`🎉 Payment successful! Order ${orderData.order.order_number} created!`);
         setOrderId(orderData.order.id);
 
         toast({
