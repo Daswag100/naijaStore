@@ -12,6 +12,12 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'NaijaStore - Premium Nigerian Ecommerce',
   description: 'Your trusted online shopping destination in Nigeria. Quality products, fast delivery, secure payments.',
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
 };
 
 export default function RootLayout({

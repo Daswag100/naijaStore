@@ -80,3 +80,54 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Mobile UX Optimizations */
+@layer utilities {
+  /* Touch-friendly sizing for mobile */
+  @media (max-width: 768px) {
+    /* Minimum touch target size - 44px per Apple HIG */
+    .btn-touch {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    
+    /* Improved text sizing for mobile readability */
+    .text-mobile-base {
+      font-size: 16px; /* Prevents zoom on iOS */
+      line-height: 1.5;
+    }
+    
+    /* Better spacing for mobile touch interfaces */
+    .space-touch > * + * {
+      margin-top: 12px;
+    }
+    
+    /* Enhanced tap targets */
+    button, [role="button"], input, select, textarea {
+      min-height: 44px;
+    }
+    
+    /* Smoother animations on mobile */
+    * {
+      -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Better mobile scrolling */
+    .scroll-smooth-mobile {
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
+    }
+  }
+  
+  /* Prevent text selection on touch interfaces */
+  .touch-manipulation {
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  
+  /* Active states for better touch feedback */
+  .btn-active {
+    @apply active:scale-95 transition-transform duration-75;
+  }
+}

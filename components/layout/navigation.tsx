@@ -242,105 +242,139 @@ export function Navigation() {
               </div>
             )}
 
-            {/* Mobile Menu Button */}
+            {/* Mobile Menu Button - Enhanced */}
             <Button
               variant="ghost"
               size="sm"
-              className="lg:hidden p-2 hover:bg-gray-50 rounded-full"
+              className="lg:hidden p-3 hover:bg-gray-50 rounded-xl border border-gray-200 hover:border-gray-300 transition-all active:scale-95"
               onClick={() => setIsOpen(!isOpen)}
+              aria-label={isOpen ? "Close menu" : "Open menu"}
             >
-              {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              <div className="relative w-6 h-6">
+                <Menu className={`w-6 h-6 absolute transition-all duration-200 ${isOpen ? 'rotate-90 opacity-0' : 'rotate-0 opacity-100'}`} />
+                <X className={`w-6 h-6 absolute transition-all duration-200 ${isOpen ? 'rotate-0 opacity-100' : '-rotate-90 opacity-0'}`} />
+              </div>
             </Button>
           </div>
         </div>
 
-        {/* Mobile Menu */}
-        {isOpen && (
-          <div className="lg:hidden py-6 border-t border-gray-100 bg-white">
-            <div className="space-y-6">
-              {/* Mobile Search */}
+        {/* Mobile Menu - Optimized for Touch */}
+        <div 
+          className={`lg:hidden overflow-hidden transition-all duration-300 ease-in-out border-t border-gray-100 bg-white ${
+            isOpen ? 'max-h-screen opacity-100 shadow-lg' : 'max-h-0 opacity-0'
+          }`}
+        >
+          <div className={`px-4 space-y-6 transition-all duration-300 ${isOpen ? 'py-4' : 'py-0'}`}>
+              {/* Mobile Search - Touch Optimized */}
               <form onSubmit={handleSearch} className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 z-10" />
                 <Input
                   type="search"
                   placeholder="Search products..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleSearchKeyDown}
-                  className="pl-12 pr-4 h-12 text-base border-2 border-gray-200 rounded-full"
+                  className="pl-12 pr-4 h-14 text-base border-2 border-gray-200 rounded-xl bg-gray-50 focus:bg-white transition-colors"
                 />
               </form>
 
-              {/* Mobile Navigation */}
-              <div className="space-y-1">
-                {mainNavigation.map((item) => (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`block py-3 px-4 text-lg font-medium transition-colors rounded-lg ${
-                      pathname === item.href
-                        ? "text-green-600 bg-green-50"
-                        : "text-gray-700 hover:text-green-600 hover:bg-gray-50"
-                    }`}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    {item.name}
-                  </Link>
-                ))}
+              {/* Mobile Navigation - Touch Friendly */}
+              <div className="bg-gray-50 rounded-xl p-2">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-3 py-2 mb-1">Navigation</h3>
+                <div className="space-y-1">
+                  {mainNavigation.map((item) => (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`flex items-center min-h-[44px] px-4 py-3 text-base font-medium transition-all duration-200 rounded-lg ${
+                        pathname === item.href
+                          ? "text-green-600 bg-green-100 shadow-sm"
+                          : "text-gray-700 hover:text-green-600 hover:bg-white hover:shadow-sm active:bg-gray-100"
+                      }`}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <span className="flex-1">{item.name}</span>
+                      {pathname === item.href && (
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      )}
+                    </Link>
+                  ))}
+                </div>
               </div>
 
-              {/* Mobile Auth */}
+              {/* Mobile Auth - Enhanced */}
               {isLoading ? (
-                <div className="pt-4 border-t border-gray-100 flex items-center justify-center space-x-2 p-4">
+                <div className="bg-gray-50 rounded-xl p-6 flex items-center justify-center space-x-3">
                   <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-gray-500">Loading...</span>
+                  <span className="text-gray-600 font-medium">Loading...</span>
                 </div>
               ) : (!isAuthenticated || !user) && (
-                <div className="pt-4 border-t border-gray-100 space-y-3">
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 space-y-3">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Account</h3>
                   <Link href="/login" onClick={() => setIsOpen(false)}>
-                    <Button variant="outline" className="w-full h-12 text-base rounded-full">
+                    <Button variant="outline" className="w-full h-12 text-base font-medium rounded-xl border-2 hover:border-green-300 hover:bg-green-50 transition-all active:scale-[0.98]">
                       Sign In
                     </Button>
                   </Link>
                   <Link href="/register" onClick={() => setIsOpen(false)}>
-                    <Button className="w-full h-12 text-base bg-green-600 hover:bg-green-700 rounded-full">
+                    <Button className="w-full h-12 text-base font-medium bg-green-600 hover:bg-green-700 rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]">
                       Sign Up
                     </Button>
                   </Link>
                 </div>
               )}
 
-              {/* Mobile User Info */}
+              {/* Mobile User Info - Premium Design */}
               {!isLoading && isAuthenticated && user && (
-                <div className="pt-4 border-t border-gray-100">
-                  <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
-                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                      <User className="w-5 h-5 text-green-600" />
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4">
+                  {/* User Profile Header */}
+                  <div className="flex items-center space-x-4 p-3 bg-white rounded-lg shadow-sm mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center shadow-md">
+                      <User className="w-6 h-6 text-white" />
                     </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{user?.name}</p>
-                      <p className="text-sm text-gray-500">{user?.email}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">{user?.name}</p>
+                      <p className="text-sm text-gray-500 truncate">{user?.email}</p>
                     </div>
                   </div>
-                  <div className="mt-3 space-y-1">
-                    <Link href="/account" className="block py-2 px-4 text-gray-700 hover:text-green-600">
-                      My Account
-                    </Link>
-                    <Link href="/account/orders" className="block py-2 px-4 text-gray-700 hover:text-green-600">
-                      Order History
-                    </Link>
-                    <button 
-                      onClick={logout}
-                      className="block w-full text-left py-2 px-4 text-red-600 hover:bg-red-50"
+                  
+                  {/* Account Actions */}
+                  <div className="space-y-1">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Account</h3>
+                    <Link 
+                      href="/account" 
+                      onClick={() => setIsOpen(false)}
+                      className="flex items-center min-h-[44px] py-3 px-4 text-gray-700 hover:text-green-600 bg-white hover:bg-green-50 rounded-lg transition-all active:bg-gray-100"
                     >
-                      Sign Out
+                      <User className="w-4 h-4 mr-3 text-gray-400" />
+                      <span className="font-medium">My Account</span>
+                    </Link>
+                    <Link 
+                      href="/account/orders" 
+                      onClick={() => setIsOpen(false)}
+                      className="flex items-center min-h-[44px] py-3 px-4 text-gray-700 hover:text-green-600 bg-white hover:bg-green-50 rounded-lg transition-all active:bg-gray-100"
+                    >
+                      <ShoppingCart className="w-4 h-4 mr-3 text-gray-400" />
+                      <span className="font-medium">Order History</span>
+                    </Link>
+                    
+                    {/* Divider */}
+                    <div className="h-px bg-gray-200 my-3 mx-2"></div>
+                    
+                    <button 
+                      onClick={() => {
+                        logout();
+                        setIsOpen(false);
+                      }}
+                      className="flex items-center w-full min-h-[44px] py-3 px-4 text-red-600 hover:text-red-700 bg-white hover:bg-red-50 rounded-lg transition-all active:bg-red-100"
+                    >
+                      <span className="font-medium">Sign Out</span>
                     </button>
                   </div>
                 </div>
               )}
             </div>
           </div>
-        )}
       </div>
     </nav>
   );
