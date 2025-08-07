@@ -6,6 +6,7 @@ import { Navigation } from "@/components/layout/navigation";
 import { Footer } from "@/components/layout/footer";
 import { CartProvider } from "@/contexts/cart-context";
 import { AuthProvider } from "@/contexts/auth-context";
+import { Analytics } from '@vercel/analytics/next';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -27,6 +28,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <title>Next.js</title>
+      </head>
       <body className={inter.className}>
         <AuthProvider>
           <CartProvider>
@@ -34,6 +38,7 @@ export default function RootLayout({
               <Navigation />
               <main className="flex-1">
                 {children}
+                <Analytics />
               </main>
               <Footer />
             </div>
