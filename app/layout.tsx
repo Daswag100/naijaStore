@@ -29,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <title>Next.js</title>
+        <title>NaijaStore</title>
       </head>
       <body className={inter.className}>
         <AuthProvider>
