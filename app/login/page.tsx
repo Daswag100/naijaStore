@@ -129,13 +129,6 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-xs text-blue-700">
-              <strong>Demo Login:</strong><br />
-              Email: demo@naijastore.com<br />
-              Password: password
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>
