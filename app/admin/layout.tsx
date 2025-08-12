@@ -109,9 +109,6 @@ export default function AdminLayout({
                 Access Admin Panel
               </Button>
               
-              <div className="text-center text-sm text-gray-600">
-                Demo password: <code className="bg-gray-100 px-1 rounded">admin123</code>
-              </div>
             </form>
           </CardContent>
         </Card>
